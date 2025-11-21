@@ -142,6 +142,7 @@ class TestLexer(unittest.TestCase):
             ("func // comment", [TokenType.FUNC]),
             ("func main // comment", [TokenType.FUNC, TokenType.IDENTIFIER]),
             ("// comment\nfunc", [TokenType.FUNC]),  # Comment across line
+            ("// comment\r\nfunc", [TokenType.FUNC]),  # Windows newline
         ]
         
         for source, expected_types in test_cases:
@@ -151,6 +152,18 @@ class TestLexer(unittest.TestCase):
                 # Filter out EOF
                 token_types = [t.type for t in tokens if t.type != TokenType.EOF]
                 self.assertEqual(token_types, expected_types)
+    
+    def test_comment_line_tracking(self):
+        """Ensure comments do not disrupt line/column tracking."""
+        source = "func // comment\nmain"
+        lexer = Lexer(source)
+        tokens = lexer.tokenize()
+        
+        self.assertEqual(tokens[0].type, TokenType.FUNC)
+        # 'main' should be on the next line, column 1
+        self.assertEqual(tokens[1].type, TokenType.IDENTIFIER)
+        self.assertEqual(tokens[1].line, 2)
+        self.assertEqual(tokens[1].column, 1)
     
     def test_line_column_tracking(self):
         """Test line and column tracking."""

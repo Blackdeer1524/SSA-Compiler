@@ -1,58 +1,19 @@
-Program(functions=[Function(name='add',
-                            args=[Argument(name='x', type='int'),
-                                  Argument(name='y', type='int')],
-                            return_type='int',
-                            body=Block(statements=[Return(value=BinaryOp(operator='+',
-                                                                         left=Identifier(name='x'),
-                                                                         right=Identifier(name='y')),
-                                                          line=3,
-                                                          column=5)],
-                                       symbol_table=SymbolTable(variables={'x': 'int', 'y': 'int'}, functions={})),
-                            line=2,
-                            column=6),
-                   Function(name='main',
-                            args=[],
-                            return_type='void',
-                            body=Block(statements=[Assignment(name='i',
-                                                              type='int',
-                                                              value=IntegerLiteral(value=0),
-                                                              line=7,
-                                                              column=5),
-                                                   UnconditionalLoop(body=Block(statements=[Condition(condition=BinaryOp(operator='<',
-                                                                                                                         left=Identifier(name='i'),
-                                                                                                                         right=IntegerLiteral(value=10)),
-                                                                                                      then_block=Block(statements=[Reassignment(name='i',
-                                                                                                                                                value=BinaryOp(operator='+',
-                                                                                                                                                               left=BinaryOp(operator='*',
-                                                                                                                                                                             left=IntegerLiteral(value=2),
-                                                                                                                                                                             right=Identifier(name='i')),
-                                                                                                                                                               right=IntegerLiteral(value=1)),
-                                                                                                                                                line=10,
-                                                                                                                                                column=13)],
-                                                                                                                       symbol_table=SymbolTable(variables={}, functions={})),
-                                                                                                      else_block=None,
-                                                                                                      line=9,
-                                                                                                      column=9),
-                                                                                            Assignment(name='b',
-                                                                                                       type='int',
-                                                                                                       value=CallExpression(name='add',
-                                                                                                                            args=[IntegerLiteral(value=10),
-                                                                                                                                  Identifier(name='i')]),
-                                                                                                       line=13,
-                                                                                                       column=9),
-                                                                                            Condition(condition=BinaryOp(operator='>',
-                                                                                                                         left=Identifier(name='b'),
-                                                                                                                         right=IntegerLiteral(value=30)),
-                                                                                                      then_block=Block(statements=[Break(line=15,
-                                                                                                                                         column=13)],
-                                                                                                                       symbol_table=SymbolTable(variables={}, functions={})),
-                                                                                                      else_block=None,
-                                                                                                      line=14,
-                                                                                                      column=9)],
-                                                                                symbol_table=SymbolTable(variables={'b': 'int'}, functions={})),
-                                                                     line=8,
-                                                                     column=5)],
-                                       symbol_table=SymbolTable(variables={'i': 'int'}, functions={})),
-                            line=6,
-                            column=6)],
-        symbol_table=SymbolTable(variables={}, functions={'add': FunctionInfo(add(x int, y int) -> int), 'main': FunctionInfo(main() -> void)}))
+digraph main {
+"entry" [label="entry:\n  jump(jmp, bb0)\n"]
+entry -> bb0
+"bb0" [label="bb0:\n  i = store(0)\n  jump(jmp, bb1)\n"]
+bb0 -> bb1
+"bb1" [label="bb1:\n  %2 = store(10)\n  %0 = i < %2\n  cmp(%0, 1)\n  jump(jnz, bb2)\n  jump(jmp, bb4)\n"]
+bb1 -> bb2
+bb1 -> bb4
+"bb4" [label="bb4:\n  return\n"]
+bb4 -> exit
+"exit" [label="exit:\n"]
+"bb2" [label="bb2:\n  %5 = store(5)\n  %3 = i == %5\n  cmp(%3, 1)\n  jump(jnz, bb5)\n  jump(jmp, bb6)\n"]
+bb2 -> bb6
+bb2 -> bb5
+"bb5" [label="bb5:\n  jump(jmp, bb4)\n  jump(jmp, bb6)\n"]
+bb5 -> bb4
+bb5 -> bb6
+"bb6" [label="bb6:\n"]
+}

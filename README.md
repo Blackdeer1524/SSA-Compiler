@@ -56,7 +56,7 @@ PROGRAMM ::= FUNCTION+
 
 FUNCTION ::= func %name% "(" ARG_LIST ")" "->" TYPE "{" BLOCK "}"
 
-ARG_LIST ::= ε | ARG ("," ARG)*
+ARG_LIST ::= EPSILON | ARG ("," ARG)*
 
 ARG ::= %name% %type%
 
@@ -89,7 +89,7 @@ LOOP ::=
 
 FUNCTION_CALL ::= %name% "(" EXPR_LIST ")"
 
-EXPR_LIST ::= ε | EXPR ("," EXPR)*
+EXPR_LIST ::= EPSILON | EXPR ("," EXPR)*
 
 RETURN ::= return [EXPR]
 

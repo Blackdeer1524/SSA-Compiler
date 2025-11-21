@@ -80,20 +80,17 @@ class Lexer:
         }
     
     def current_char(self) -> Optional[str]:
-        """Get the current character or None if EOF."""
         if self.pos >= len(self.source):
             return None
         return self.source[self.pos]
     
     def peek_char(self, offset: int = 1) -> Optional[str]:
-        """Peek at a character ahead without advancing."""
         peek_pos = self.pos + offset
         if peek_pos >= len(self.source):
             return None
         return self.source[peek_pos]
     
     def advance(self) -> Optional[str]:
-        """Advance position and return the character."""
         if self.pos >= len(self.source):
             return None
         
@@ -109,24 +106,32 @@ class Lexer:
         return char
     
     def skip_whitespace(self):
-        """Skip whitespace characters."""
         char = self.current_char()
         while char and char in ' \t\r\n':
             self.advance()
             char = self.current_char()
     
     def skip_comment(self):
-        """Skip single-line comments (// ...)."""
         if self.current_char() == '/' and self.peek_char() == '/':
             # Skip both slashes
             self.advance()
             self.advance()
-            # Skip until newline or EOF
-            while self.current_char() and self.current_char() != '\n':
+            # Skip until newline or EOF (support both \n and \r\n)
+            while True:
+                char = self.current_char()
+                if char is None:
+                    break
+                if char == '\n':
+                    self.advance()
+                    break
+                if char == '\r':
+                    self.advance()
+                    if self.current_char() == '\n':
+                        self.advance()
+                    break
                 self.advance()
     
     def read_integer(self) -> str:
-        """Read an integer literal."""
         start_pos = self.pos
         char = self.current_char()
         while char and char.isdigit():
@@ -135,7 +140,6 @@ class Lexer:
         return self.source[start_pos:self.pos]
     
     def read_identifier(self) -> str:
-        """Read an identifier or keyword."""
         start_pos = self.pos
         char = self.current_char()
         while char and (char.isalnum() or char == '_'):
@@ -144,7 +148,6 @@ class Lexer:
         return self.source[start_pos:self.pos]
     
     def next_token(self) -> Token:
-        """Get the next token from the source."""
         # Skip whitespace and comments
         while True:
             self.skip_whitespace()
@@ -162,7 +165,6 @@ class Lexer:
         
         char = self.current_char()
         
-        # Single character tokens
         if char == '(':
             self.advance()
             return Token(TokenType.LPAREN, "(", line, column)
@@ -200,7 +202,6 @@ class Lexer:
                 return Token(TokenType.NOT_EQUAL, "!=", line, column)
             return Token(TokenType.NOT, "!", line, column)
         
-        # Two character tokens
         elif char == '=':
             self.advance()
             if self.current_char() == '=':
@@ -238,18 +239,15 @@ class Lexer:
                 return Token(TokenType.ARROW, "->", line, column)
             return Token(TokenType.MINUS, "-", line, column)
         
-        # Integer literals
         elif char and char.isdigit():
             value = self.read_integer()
             return Token(TokenType.INTEGER, value, line, column)
         
-        # Identifiers and keywords
         elif char and (char.isalpha() or char == '_'):
             value = self.read_identifier()
             token_type = self.keywords.get(value, TokenType.IDENTIFIER)
             return Token(token_type, value, line, column)
         
-        # Unknown character
         else:
             self.advance()
             return Token(TokenType.ERROR, f"Unexpected character: {char}", line, column)
@@ -266,7 +264,6 @@ class Lexer:
 
 
 if __name__ == "__main__":
-    # Test the lexer with example code
     test_code = """func main() -> void {
     a int = 1;
     b int = 2 + (-a);
