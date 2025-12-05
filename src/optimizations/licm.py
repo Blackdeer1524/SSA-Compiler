@@ -43,7 +43,7 @@ class LICM:
 
     def _index_definitions(self, cfg: CFG):
         self.def_to_block.clear()
-        for bb in cfg.traverse():
+        for bb in cfg:
             for phi in bb.phi_nodes.values():
                 if phi.lhs.version is not None:
                     self.def_to_block[(phi.lhs.name, phi.lhs.version)] = bb
@@ -56,7 +56,7 @@ class LICM:
         assert self.dom_tree is not None
         loops_by_header: dict[BasicBlock, set[BasicBlock]] = defaultdict(set)
 
-        for bb in cfg.traverse():
+        for bb in cfg:
             for succ in bb.succ:
                 if self._dominates(succ, bb):
                     loop_blocks = self._collect_loop_blocks(header=succ, tail=bb)

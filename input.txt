@@ -1,10 +1,9 @@
 func main() -> int {
-    N int = 0;
-    for (i int = 0; i < 10; i = i + 1) {
-        if (N < 10) { 
-            break;  
-        }
-        N = (N + 1) * 2;
+    a int = 1;
+    if (a == 1) {
+        a = 3;
     }
-    return N;
+    
+    a = 12;
+    return 3;
 }

@@ -37,7 +37,7 @@ class DCE:
         self._rewrite(cfg)
 
     def _build_metadata(self, cfg: CFG):
-        for bb in cfg.traverse():
+        for bb in cfg:
             # Phis
             for phi in bb.phi_nodes.values():
                 self.inst_block[phi] = bb
@@ -86,7 +86,7 @@ class DCE:
 
     # ---------- Liveness ----------
     def _seed_roots(self, cfg: CFG, var_work: deque[tuple[str, int]]):
-        for bb in cfg.traverse():
+        for bb in cfg:
             for inst in bb.instructions:
                 match inst:
                     case InstAssign(lhs, rhs):
@@ -146,7 +146,7 @@ class DCE:
     # ---------- Rewriting ----------
     def _rewrite(self, cfg: CFG):
         # Remove dead PHI nodes
-        for bb in cfg.traverse():
+        for bb in cfg:
             to_remove = []
             for name, phi in bb.phi_nodes.items():
                 if phi not in self.live_insts:
@@ -155,7 +155,7 @@ class DCE:
                 bb.phi_nodes.pop(name, None)
 
         # Remove dead instructions
-        for bb in cfg.traverse():
+        for bb in cfg:
             new_insts: list[Instruction] = []
             for inst in bb.instructions:
                 match inst:

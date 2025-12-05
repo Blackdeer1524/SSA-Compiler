@@ -101,11 +101,11 @@ class SCCP:
     # ---------- Metadata ----------
     def _index_blocks(self, cfg: CFG):
         self.label_to_block = {}
-        for bb in cfg.traverse():
+        for bb in cfg:
             self.label_to_block[bb.label] = bb
 
     def _build_metadata(self, cfg: CFG):
-        for bb in cfg.traverse():
+        for bb in cfg:
             # Phi nodes first
             for phi in bb.phi_nodes.values():
                 self.inst_block[phi] = bb
@@ -350,10 +350,9 @@ class SCCP:
     # ---------- Rewriting ----------
     def _rewrite_cfg(self):
         assert self.cfg is not None
-        cfg = self.cfg
         
         reachable = self.executable_blocks.copy()
-        for bb in list(cfg.traverse()):
+        for bb in list(self.cfg):
             if bb in reachable:
                 continue
                 
@@ -365,9 +364,12 @@ class SCCP:
                 for phi in succ.phi_nodes.values():
                     phi.rhs.pop(bb.label, None)
             bb.succ = []
+            bb.preds = []
 
     def _fold_constants(self):
-        for bb in list(self.executable_blocks):
+        assert self.cfg is not None
+
+        for bb in self.cfg:
             for phi_node in bb.phi_nodes.values():
                 new_rhs = {pred: self._replace_in_rhs(val) for pred, val in phi_node.rhs.items()}
                 phi_node.rhs = new_rhs 
@@ -409,13 +411,18 @@ class SCCP:
                         if left_lattice.is_const() and right_lattice.is_const():
                             if left_lattice.value == right_lattice.value:
                                 bb.instructions[i] = InstUncondJump(inst.then_label)
-                                # else_block = self.label_to_block[inst.else_label]
-                                # assert else_block in bb.succ, (bb, bb.succ, else_block)
-                                # bb.succ.remove(else_block)
+                                then_block = self.label_to_block[inst.then_label]
+                                for s in bb.succ:
+                                    if s.label != then_block.label:
+                                        s.preds.remove(bb)
+                                bb.succ = [then_block]
                             else:
                                 bb.instructions[i] = InstUncondJump(inst.else_label)
-                                # then_block = self.label_to_block[inst.then_label]
-                                # bb.succ.remove(then_block)
+                                else_block = self.label_to_block[inst.else_label]
+                                for s in bb.succ:
+                                    if s.label != else_block.label:
+                                        s.preds.remove(bb)
+                                bb.succ = [else_block]
                     case InstReturn(value):
                         if value is not None:
                             inst.value = self._replace_value(value)

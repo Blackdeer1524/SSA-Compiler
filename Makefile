@@ -17,8 +17,23 @@ cfg-O1:
 graph-O1: cfg-O1
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
+cfg-sccp:
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-licm --disable-dce --disable-block-cleanup 
+	
+graph-sccp: cfg-sccp
+	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
+
+cfg-dce:
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-licm --disable-sccp --disable-block-cleanup 
+	
+graph-dce: cfg-dce
+	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
+
 open-graph: graph
 	firefox $(SVG_FILE)
+
+show-dot:
+	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
 ir:
 	python main.py --input $(INPUT) --dump-ir $(IR_FILE)

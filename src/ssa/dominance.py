@@ -8,7 +8,7 @@ from dataclasses import dataclass
 class DominatorTree:
     entry: BasicBlock
     idom: dict[BasicBlock, Optional[BasicBlock]]  
-    reversed_idom:  dict[BasicBlock, list[BasicBlock]]
+    reversed_idom:  defaultdict[BasicBlock, list[BasicBlock]]
     dominators: dict[BasicBlock, set[BasicBlock]]
     
     def traverse(self, start=None):
@@ -41,7 +41,7 @@ def prune_unreachable(cfg: CFG, reachable_blocks: set[BasicBlock]):
         
 
 def compute_dominator_tree(cfg: CFG) -> DominatorTree:
-    reachable_blocks = set( cfg.traverse() )
+    reachable_blocks = set( cfg )
     prune_unreachable(cfg, reachable_blocks)
 
     dominators = _compute_dominators(cfg.entry, reachable_blocks)
@@ -110,13 +110,13 @@ def _build_dominator_tree(dominators: dict[BasicBlock, set[BasicBlock]], entry: 
         if dom is None:
             continue
         reversed_idom[dom].append(child)
-
+    
     tree = DominatorTree(entry, idom, reversed_idom, dominators)
     return tree
 
 def compute_dominance_frontier_graph(cfg: CFG, idom_tree: DominatorTree) -> dict[BasicBlock, set[BasicBlock]]:
     DF: dict[BasicBlock, set[BasicBlock]] = defaultdict(set)
-    for node in cfg.traverse():
+    for node in cfg:
         for pred in node.preds:
             if pred in idom_tree.dominators[node]:
                 continue

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import re
 from tkinter import Entry
 from typing import Iterable, Iterator, Optional, Sequence
 from src.parsing.parser import (
@@ -146,9 +147,29 @@ class BasicBlock:
     
     def __repr__(self):
         return self.label
+
+    def print(self):
+        res = ""
+        res += f'<font color="grey">; pred: {self.preds}</font>\n'
+        res += self.label + ":"
+        if self.meta is not None:
+            res += f' <font color="grey">; [{self.meta}]</font>'
+        res += "\n"
+
+        if len(self.phi_nodes) > 0:
+            for phi in self.phi_nodes.values():
+                res += '    ' + phi.to_IR().replace("\n", "\n    ") + '\n'
+            res += '\n'
+        
+        for inst in self.instructions:
+            res += '    ' + inst.to_IR().replace("\n", "\n    ") + '\n'
+        
+        res += f'<font color="grey">; succ: {self.succ}</font>'
+        return res
     
     def to_IR(self) -> str:
         res = ""
+        res += f'; pred: {self.preds}\n'
         res += self.label + ":"
         if self.meta is not None:
             res += f" ; [{self.meta}]"
@@ -156,18 +177,20 @@ class BasicBlock:
 
         if len(self.phi_nodes) > 0:
             for phi in self.phi_nodes.values():
-                res += '  ' + phi.to_IR().replace("\n", "\n  ") + '\n'
+                res += '    ' + phi.to_IR().replace("\n", "\n    ") + '\n'
             res += '\n'
         
         for inst in self.instructions:
-            res += '  ' + inst.to_IR().replace("\n", "\n  ") + '\n'
+            res += '    ' + inst.to_IR().replace("\n", "\n    ") + '\n'
+        
+        res += f'; succ: {self.succ}'
         return res
 
     def print_block(self):
-        label = f"preds: {self.preds}\n"
-        label += self.to_IR()
-        label += "\n"
-        label += f"succ: {self.succ}\n"
+        # label = f"preds: {self.preds}\n"
+        label = self.print()
+        label += "\n\n"
+        # label += f"succ: {self.succ}\n"
         return label.replace("\n", "\\n")
 
 
@@ -179,7 +202,7 @@ class CFG:
     entry: BasicBlock
     exit: BasicBlock
     
-    def traverse(self) -> Iterator[BasicBlock]:
+    def __iter__(self) -> Iterator[BasicBlock]:
         visited_blocks = set()
         q = [self.entry]
         while len(q) > 0:
@@ -194,10 +217,12 @@ class CFG:
         res = f"digraph {self.name} {{\n"
         res += "node [shape=box]\n"
 
-        for bb in self.traverse():
-            res += f'"{bb.label}" [label="{bb.print_block()}"]\n'
+        for bb in self:
+            bb_repr = bb.print_block().replace("\\n", '<br ALIGN="LEFT"/>')
+            # bb_repr = re.sub(r"(BB\d+)", r'<font color="blue">\1</font>', bb_repr)
+            res += f'"{bb.label}" [label=<{bb_repr}>]\n'
 
-        for bb in self.traverse():
+        for bb in self:
             for succ in bb.succ:
                 res += f'"{bb.label}" -> "{succ.label}"\n'
 
@@ -214,9 +239,9 @@ class CFG:
 
     def to_IR(self) -> str:
         res = ""
-        for bb in self.traverse():
+        for bb in self:
             res += bb.to_IR()
-            res += "\n"
+            res += "\n\n"
         return res
 
 class CFGBuilder:

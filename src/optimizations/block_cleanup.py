@@ -7,7 +7,7 @@ class BlockCleanup:
         while changed:
             changed = False
             # Materialize list because we mutate the CFG while iterating.
-            for bb in list(cfg.traverse()):
+            for bb in cfg:
                 if self._is_trivial_jump_block(cfg, bb):
                     self._remove_block(bb)
                     changed = True

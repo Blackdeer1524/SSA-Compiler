@@ -20,7 +20,7 @@ class SSABuilder:
         block_ud: dict[BasicBlock, tuple[set[str], set[str]]] = {}
         self.live_in: dict[BasicBlock, set[str]] ={}
         self.live_out: dict[BasicBlock, set[str]] ={}
-        for bb in self.cfg.traverse():
+        for bb in self.cfg:
             block_ud[bb] = self._collect_uses_defs(bb)
             self.live_in[bb] = set()
             self.live_out[bb] = set()
@@ -28,7 +28,7 @@ class SSABuilder:
         changed = True
         while changed:
             changed = False
-            for bb in self.cfg.traverse():
+            for bb in self.cfg:
                 uses, defs = block_ud[bb]
                 new_out: set[str] = set()
                 for succ in bb.succ:
