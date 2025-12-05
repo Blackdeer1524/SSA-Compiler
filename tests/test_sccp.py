@@ -1,71 +1,13 @@
-import re
 import textwrap
-import unittest
 
 from src.optimizations.sccp import SCCP
-from src.parsing.lexer import Lexer
-from src.parsing.parser import Parser
-from src.parsing.semantic import SemanticAnalyzer
-from src.ssa.cfg import CFG, CFGBuilder
-from src.ssa.dominance import compute_dominance_frontier_graph, compute_dominator_tree
-from src.ssa.ir_visualizer import ir_to_graphviz
-from src.ssa.ssa import SSABuilder
+from tests import base
 
 
-class TestSCCP(unittest.TestCase):
-    def setUp(self) -> None:
-        self.maxDiff = None
-        return super().setUp()
-
-    def parse_programm(self, src: str) -> CFG:
-        lexer = Lexer(src)
-        parser = Parser(lexer)
-        ast = parser.parse()
-        analyzer = SemanticAnalyzer(ast)
-
-        errors = analyzer.analyze()
-        self.assertListEqual(errors, [])
-
-        builder = CFGBuilder()
-        cfgs = builder.build(ast)
-        self.assertEqual(len(cfgs), 1)
-
-        ssa_builder = SSABuilder()
-        ssa_builder.build(cfgs[0])
-
-        return cfgs[0]
-
-    def make_main(self, prog) -> str:
-        return f"func main() -> int {{  {prog}  }}"
-
-    def assert_ir(self, src: str, expected_ir: str):
-        main = self.parse_programm(src)
-        SCCP().run(main)
-        ir = main.to_IR().strip()
-
-        if expected_ir == ir:
-            return
-
-        expected_graph = ir_to_graphviz(expected_ir)
-        actual_graph = ir_to_graphviz(ir)
-        actual_graph = re.sub(r"(BB\d+)", r"'\1", actual_graph)
-
-        message = textwrap.dedent(f"""
-        digraph G {{
-            subgraph cluster_expected {{
-                label="Expected";
-                color=green;
-            {expected_graph}
-            }}
-
-            subgraph cluster_actual {{
-                label="Actual";
-                color=red;
-            {actual_graph}
-            }}
-        }}
-        """)
-        self.assertEqual(expected_ir, ir, message)
+class TestSCCP(base.TestBase):
+    def __init__(self, *args):
+        passes = [SCCP]
+        super().__init__(passes, *args)
 
     def test_constant_prop(self):
         src = self.make_main("""

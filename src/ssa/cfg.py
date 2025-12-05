@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import re
-from tkinter import Entry
-from typing import Iterable, Iterator, Optional, Sequence
+from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
     Function,
@@ -24,7 +22,6 @@ from src.parsing.parser import (
     IntegerLiteral,
     CallExpression,
 )
-from collections import deque, defaultdict
 
 
 @dataclass
@@ -111,10 +108,10 @@ class InstCmp(Instruction):
 
 @dataclass(eq=False)
 class InstUncondJump(Instruction):
-    label: str
+    target_block: "BasicBlock"
 
     def to_IR(self):
-        return f"jmp {self.label}"
+        return f"jmp {self.target_block.label}"
 
 
 @dataclass(eq=False)
@@ -427,7 +424,7 @@ class CFGBuilder:
                 self.current_block.instructions[-1], (InstUncondJump, InstCmp)
             ):
                 self.current_block.add_child(merge_block)
-                self.current_block.append(InstUncondJump(merge_block.label))
+                self.current_block.append(InstUncondJump(merge_block))
                 self._switch_to_block(old_block)
 
         self.current_block.add_child(then_block)
@@ -438,7 +435,7 @@ class CFGBuilder:
             self.current_block.instructions[-1], (InstUncondJump, InstCmp)
         ):
             self.current_block.add_child(merge_block)
-            self.current_block.append(InstUncondJump(merge_block.label))
+            self.current_block.append(InstUncondJump(merge_block))
 
         self._switch_to_block(merge_block)
 
@@ -456,12 +453,12 @@ class CFGBuilder:
         self.continue_targets.append(update_block)
 
         self.current_block.add_child(init_block)
-        self.current_block.append(InstUncondJump(init_block.label))
+        self.current_block.append(InstUncondJump(init_block))
 
         self._switch_to_block(init_block)
         self.current_block.add_child(header_block)
         self._build_assignment(stmt.init)
-        self.current_block.append(InstUncondJump(header_block.label))
+        self.current_block.append(InstUncondJump(header_block))
 
         self._switch_to_block(header_block)
         self.current_block.add_child(body_block)
@@ -478,12 +475,12 @@ class CFGBuilder:
             self.current_block.instructions[-1], (InstUncondJump, InstCmp)
         ):
             self.current_block.add_child(update_block)
-            self.current_block.append(InstUncondJump(update_block.label))
+            self.current_block.append(InstUncondJump(update_block))
 
         self._switch_to_block(update_block)
         self.current_block.add_child(header_block)
         self._build_reassignment(stmt.update)
-        self.current_block.append(InstUncondJump(header_block.label))
+        self.current_block.append(InstUncondJump(header_block))
 
         self.break_targets.pop()
         self.continue_targets.pop()
@@ -500,17 +497,17 @@ class CFGBuilder:
         self.continue_targets.append(init_block)
 
         self.current_block.add_child(init_block)
-        self.current_block.append(InstUncondJump(init_block.label))
+        self.current_block.append(InstUncondJump(init_block))
 
         self._switch_to_block(init_block)
         self.current_block.add_child(body_block)
-        self.current_block.append(InstUncondJump(body_block.label))
+        self.current_block.append(InstUncondJump(body_block))
 
         self._switch_to_block(body_block)
         self._build_block(stmt.body)
 
         self.current_block.add_child(init_block)
-        self.current_block.append(InstUncondJump(body_block.label))
+        self.current_block.append(InstUncondJump(body_block))
 
         self.break_targets.pop()
         self.continue_targets.pop()
@@ -537,7 +534,7 @@ class CFGBuilder:
         if self.break_targets:
             target = self.break_targets[-1]
             self.current_block.add_child(target)
-            self.current_block.append(InstUncondJump(target.label))
+            self.current_block.append(InstUncondJump(target))
 
     def _build_continue(self, stmt: Continue):
         assert self.current_block is not None, "Current block must be set"
@@ -545,4 +542,4 @@ class CFGBuilder:
         if self.continue_targets:
             target = self.continue_targets[-1]
             self.current_block.add_child(target)
-            self.current_block.append(InstUncondJump(target.label))
+            self.current_block.append(InstUncondJump(target))

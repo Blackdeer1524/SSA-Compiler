@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Literal, Optional, Iterable, Iterator
+from typing import Literal, Optional, Iterable
 
 from src.ssa.cfg import (
     CFG,
@@ -74,11 +74,9 @@ class SCCP:
         self.uses: dict[tuple[str, int], set[Instruction | InstPhi]] = defaultdict(set)
         self.defs: dict[tuple[str, int], Instruction | InstPhi] = {}
         self.inst_block: dict[Instruction | InstPhi, BasicBlock] = {}
-        self.label_to_block: dict[str, BasicBlock] = {}
 
     def run(self, cfg: CFG):
         self.cfg = cfg
-        self._index_blocks(cfg)
         self._build_metadata(cfg)
 
         # Initialization: entry block is executable
@@ -97,12 +95,6 @@ class SCCP:
         # Rewrite CFG and fold constants
         self._rewrite_cfg()
         self._fold_constants()
-
-    # ---------- Metadata ----------
-    def _index_blocks(self, cfg: CFG):
-        self.label_to_block = {}
-        for bb in cfg:
-            self.label_to_block[bb.label] = bb
 
     def _build_metadata(self, cfg: CFG):
         for bb in cfg:
@@ -203,9 +195,7 @@ class SCCP:
                     self._evaluate_assign(inst)
                 case InstCmp(_, _):
                     self._evaluate_branch(inst, bb)
-                case InstUncondJump(label):
-                    target = self.label_to_block.get(label)
-                    assert target is not None
+                case InstUncondJump(target):
                     self._mark_edge_feasible(bb, target)
                 case _:
                     pass
@@ -339,17 +329,15 @@ class SCCP:
         right = br.right
         lv = self._get_lattice_of_value(left)
         rv = self._get_lattice_of_value(right)
-        then_block = self.label_to_block[br.then_label]
-        else_block = self.label_to_block[br.else_label]
         if lv.is_const() and rv.is_const():
             cond_true = 1 if lv.value == rv.value else 0
             if cond_true == 1:
-                self._mark_edge_feasible(bb, then_block)
+                self._mark_edge_feasible(bb, br.then_block)
             else:
-                self._mark_edge_feasible(bb, else_block)
+                self._mark_edge_feasible(bb, br.else_block)
         elif lv.is_nac() or rv.is_nac():
-            self._mark_edge_feasible(bb, then_block)
-            self._mark_edge_feasible(bb, else_block)
+            self._mark_edge_feasible(bb, br.then_block)
+            self._mark_edge_feasible(bb, br.else_block)
         else:
             return
 
@@ -419,19 +407,17 @@ class SCCP:
 
                         if left_lattice.is_const() and right_lattice.is_const():
                             if left_lattice.value == right_lattice.value:
-                                bb.instructions[i] = InstUncondJump(inst.then_label)
-                                then_block = self.label_to_block[inst.then_label]
+                                bb.instructions[i] = InstUncondJump(inst.then_block)
                                 for s in bb.succ:
-                                    if s.label != then_block.label:
+                                    if s.label != inst.then_block.label:
                                         s.preds.remove(bb)
-                                bb.succ = [then_block]
+                                bb.succ = [inst.then_block]
                             else:
-                                bb.instructions[i] = InstUncondJump(inst.else_label)
-                                else_block = self.label_to_block[inst.else_label]
+                                bb.instructions[i] = InstUncondJump(inst.else_block)
                                 for s in bb.succ:
-                                    if s.label != else_block.label:
+                                    if s.label != inst.else_block.label:
                                         s.preds.remove(bb)
-                                bb.succ = [else_block]
+                                bb.succ = [inst.else_block]
                     case InstReturn(value):
                         if value is not None:
                             inst.value = self._replace_value(value)

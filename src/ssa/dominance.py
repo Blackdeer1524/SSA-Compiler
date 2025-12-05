@@ -1,6 +1,6 @@
 from typing import Optional
 from src.ssa.cfg import CFG, BasicBlock
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 
 

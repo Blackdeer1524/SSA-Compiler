@@ -38,7 +38,7 @@ class LICM:
         self.dom_tree = compute_dominator_tree(cfg)
         self._index_definitions(cfg)
         loops = self._find_loops(cfg)
-        for loop in loops:
+        for loop in sorted(loops, key=lambda x: len(x.blocks)):
             self._hoist_loop(loop)
 
     def _index_definitions(self, cfg: CFG):
@@ -85,15 +85,15 @@ class LICM:
     def _collect_loop_blocks(
         self, header: BasicBlock, tail: BasicBlock
     ) -> set[BasicBlock]:
-        loop_blocks = {header}
+        seen_loop_blocks = {header}
         stack = [tail]
         while stack:
             node = stack.pop()
-            if node in loop_blocks:
+            if node in seen_loop_blocks:
                 continue
-            loop_blocks.add(node)
+            seen_loop_blocks.add(node)
             stack.extend(node.preds)
-        return loop_blocks
+        return seen_loop_blocks
 
     def _hoist_loop(self, loop: LoopInfo):
         assert self.dom_tree is not None
@@ -106,6 +106,9 @@ class LICM:
         while changed:
             changed = False
             for bb in self.dom_tree.traverse(loop.header):
+                if bb not in loop.blocks:
+                    continue
+
                 new_insts: list[Instruction] = []
                 for inst in bb.instructions:
                     if self._is_hoistable(inst, loop.blocks, invariant_defs):
