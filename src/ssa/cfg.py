@@ -25,6 +25,7 @@ from src.parsing.parser import (
     IntegerLiteral,
     CallExpression,
 )
+from src.ssa.helpers import color_label
 
 
 @dataclass
@@ -189,30 +190,12 @@ class BasicBlock:
             res += "    " + inst.to_IR().replace("\n", "\n    ") + "\n"
 
         res += f"; succ: {self.succ}"
-        return res
-
-    def color_label(self, l: str) -> str:
-        h = hash(l)
-        b = hex(h % 8 + 2)[2:]
-        h //= 8
-
-        g = hex(h % 8 + 2)[2:]
-        h //= 8
-
-        r = hex(h % 8 + 2)[2:]
-
-        if len(r) == 1:
-            r = r + "0"
-        if len(b) == 1:
-            b = b + "0"
-        if len(g) == 1:
-            g = g + "0"
-        return f'<B><font color="#{r}{g}{b}">{l}</font></B>'
+        return res 
 
     def print_block(self):
         res = ""
-        res += f'<font color="grey">; pred: {[self.color_label(bb.label) for bb in self.preds]}</font><br ALIGN="LEFT"/>'
-        res += self.color_label(self.label) + ":"
+        res += f'<font color="grey">; pred: {[color_label(bb.label) for bb in self.preds]}</font><br ALIGN="LEFT"/>'
+        res += color_label(self.label) + ":"
         if self.meta is not None:
             res += f' <font color="grey">; [{self.meta}]</font>'
         res += '<br ALIGN="left"/>'
@@ -230,7 +213,7 @@ class BasicBlock:
             res += "    " + (
                 re.sub(
                     r"(BB\d+)",
-                    lambda x: self.color_label(x[0]),
+                    lambda x: color_label(x[0]),
                     inst.to_IR()
                     .replace("<", "&lt;")
                     .replace(">", "&gt;")
@@ -239,7 +222,7 @@ class BasicBlock:
                 )
             )
 
-        res += f'<font color="grey">; succ: {[self.color_label(bb.label) for bb in self.succ]}</font>'
+        res += f'<font color="grey">; succ: {[color_label(bb.label) for bb in self.succ]}</font>'
         res += '<br ALIGN="left"/>'
 
         return res

@@ -1,6 +1,8 @@
 import re
 from typing import Iterable
 
+from src.ssa.helpers import color_label
+
 
 def _htmlify_lines(lines: Iterable[str]) -> str:
     return '<br ALIGN="LEFT"/>'.join(line for line in lines)
@@ -54,6 +56,7 @@ def ir_to_graphviz(ir: str, name: str = "IR") -> str:
     graph_lines = ["node [shape=box]"]
 
     for label, html_label in nodes:
+        html_label = re.sub(r"(BB\d+)", lambda x: color_label(x[0]), html_label)
         graph_lines.append(f'"{label}" [label=<{html_label}>]')
 
     for src, dst in edges:
