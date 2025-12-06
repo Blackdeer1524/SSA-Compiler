@@ -28,6 +28,18 @@ cfg-dce:
 	
 graph-dce: cfg-dce
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
+	
+cfg-no-ssa:
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-ssa 
+	
+graph-no-ssa: cfg-no-ssa
+	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
+
+cfg-licm:
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-sccp --disable-dce --disable-block-cleanup 
+	
+graph-licm: cfg-licm
+	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
 open-graph: graph
 	firefox $(SVG_FILE)

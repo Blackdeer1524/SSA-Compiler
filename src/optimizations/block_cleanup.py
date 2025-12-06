@@ -54,6 +54,11 @@ class BlockCleanup:
             succ.preds.remove(bb)
 
         pred.add_child(succ)
+        # last_pred_inst = pred.instructions[-1]
+        # match last_pred_inst:
+        #     case ...
+            
+
 
         bb.preds.clear()
         bb.succ.clear()

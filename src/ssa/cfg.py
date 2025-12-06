@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
+from curses import COLOR_BLACK
 from dataclasses import dataclass, field
+import re
+from turtle import color
 from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
@@ -188,10 +191,28 @@ class BasicBlock:
         res += f"; succ: {self.succ}"
         return res
 
+    def color_label(self, l: str) -> str:
+        h = hash(l)
+        b = hex(h % 8 + 2)[2:]
+        h //= 8
+
+        g = hex(h % 8 + 2)[2:]
+        h //= 8
+
+        r = hex(h % 8 + 2)[2:]
+
+        if len(r) == 1:
+            r = r + "0"
+        if len(b) == 1:
+            b = b + "0"
+        if len(g) == 1:
+            g = g + "0"
+        return f'<B><font color="#{r}{g}{b}">{l}</font></B>'
+
     def print_block(self):
         res = ""
-        res += f'<font color="grey">; pred: {self.preds}</font><br ALIGN="LEFT"/>'
-        res += self.label + ":"
+        res += f'<font color="grey">; pred: {[self.color_label(bb.label) for bb in self.preds]}</font><br ALIGN="LEFT"/>'
+        res += self.color_label(self.label) + ":"
         if self.meta is not None:
             res += f' <font color="grey">; [{self.meta}]</font>'
         res += '<br ALIGN="left"/>'
@@ -207,16 +228,20 @@ class BasicBlock:
 
         for inst in self.instructions:
             res += "    " + (
-                inst.to_IR()
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\n", '<br ALIGN="left"/>    ')
-                + '<br ALIGN="left"/>'
+                re.sub(
+                    r"(BB\d+)",
+                    lambda x: self.color_label(x[0]),
+                    inst.to_IR()
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\n", '<br ALIGN="left"/>    ')
+                    + '<br ALIGN="left"/>',
+                )
             )
 
-        res += f'<font color="grey">; succ: {self.succ}</font>'
+        res += f'<font color="grey">; succ: {[self.color_label(bb.label) for bb in self.succ]}</font>'
         res += '<br ALIGN="left"/>'
-        
+
         return res
 
 
@@ -446,33 +471,31 @@ class CFGBuilder:
     def _build_for_loop(self, stmt: ForLoop):
         assert self.current_block is not None, "Current block must be set"
 
+        initial_cond_block = self._new_block("condition check")
         preheader_block = self._new_block("loop preheader")
         header_block = self._new_block("loop header")
         exit_block = self._new_block("loop exit")
-
-        body_block = self._new_block("loop body")
         update_block = self._new_block("loop update")
+
+        self.current_block.append(InstUncondJump(initial_cond_block))
+        self.current_block.add_child(initial_cond_block)
+        self._switch_to_block(initial_cond_block)
+
+        self._build_assignment(stmt.init)
+        cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
+        self.current_block.append(
+            InstCmp(cond_var, SSAConstant(1), preheader_block, exit_block)
+        )
+        self.current_block.add_child(preheader_block)
+        self.current_block.add_child(exit_block)
+
+        self._switch_to_block(preheader_block)
+        self.current_block.append(InstUncondJump(header_block))
+        self.current_block.add_child(header_block)
 
         self.break_targets.append(exit_block)
         self.continue_targets.append(update_block)
-
-        self.current_block.add_child(preheader_block)
-        self.current_block.append(InstUncondJump(preheader_block))
-
-        self._switch_to_block(preheader_block)
-        self.current_block.add_child(header_block)
-        self._build_assignment(stmt.init)
-        self.current_block.append(InstUncondJump(header_block))
-
         self._switch_to_block(header_block)
-        self.current_block.add_child(body_block)
-        self.current_block.add_child(exit_block)
-        cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
-        self.current_block.append(
-            InstCmp(cond_var, SSAConstant(1), body_block, exit_block)
-        )
-
-        self._switch_to_block(body_block)
         self._build_block(stmt.body)
 
         if len(self.current_block.instructions) == 0 or not isinstance(
@@ -482,9 +505,13 @@ class CFGBuilder:
             self.current_block.append(InstUncondJump(update_block))
 
         self._switch_to_block(update_block)
-        self.current_block.add_child(header_block)
         self._build_reassignment(stmt.update)
-        self.current_block.append(InstUncondJump(header_block))
+        cond_var2 = self._build_subexpression(stmt.condition, self._get_tmp_var())
+        self.current_block.append(
+            InstCmp(cond_var2, SSAConstant(1), header_block, exit_block)
+        )
+        self.current_block.add_child(header_block)
+        self.current_block.add_child(exit_block)
 
         self.break_targets.pop()
         self.continue_targets.pop()
@@ -492,6 +519,7 @@ class CFGBuilder:
 
     def _build_unconditional_loop(self, stmt: UnconditionalLoop):
         assert self.current_block is not None, "Current block must be set"
+        raise NotImplementedError("not implemented")
 
         preheader_block = self._new_block("uncond loop preheader")
         header_block = self._new_block("uncond loop header")
@@ -529,7 +557,7 @@ class CFGBuilder:
 
         self.break_targets.pop()
         self.continue_targets.pop()
-        self._switch_to_block(exit_block) 
+        self._switch_to_block(exit_block)
 
     def _build_return(self, stmt: Return):
         assert self.current_block is not None, "Current block must be set"

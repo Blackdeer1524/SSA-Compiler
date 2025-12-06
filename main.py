@@ -50,6 +50,11 @@ def main():
         metavar="PATH",
         help="Write the CFG (with dominance info) to PATH in Graphviz .dot format.",
     )
+    arg_parser.add_argument(
+        "--disable-ssa",
+        action="store_true",
+        help="disables phi-nodes placement",
+    )
     args = arg_parser.parse_args()
 
     with open(args.input, "r") as f:
@@ -68,15 +73,16 @@ def main():
     builder = CFGBuilder()
     cfg = builder.build(ast)[0]
 
-    SSABuilder().build(cfg)
-    if not args.disable_licm:
-        LICM().run(cfg)
-    if not args.disable_sccp:
-        SCCP().run(cfg)
-    if not args.disable_dce:
-        DCE().run(cfg)
-    if not args.disable_block_cleanup:
-        BlockCleanup().run(cfg)
+    if not args.disable_ssa:
+        SSABuilder().build(cfg)
+        if not args.disable_licm:
+            LICM().run(cfg)
+        if not args.disable_sccp:
+            SCCP().run(cfg)
+        if not args.disable_dce:
+            DCE().run(cfg)
+        # if not args.disable_block_cleanup:
+        #     BlockCleanup().run(cfg)
 
     if args.dump_ir:
         ir = cfg.to_IR()

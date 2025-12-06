@@ -106,6 +106,7 @@ class LICM:
         while changed:
             changed = False
             for bb in self.dom_tree.traverse(loop.header):
+                # TODO: поправить это 
                 if bb not in loop.blocks:
                     continue
 
