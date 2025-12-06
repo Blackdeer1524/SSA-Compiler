@@ -1,11 +1,18 @@
 func main() -> int {
-    N int = 0;
-    for (i int = 0; i < N; i = i + 1) {
-        N = N + i;
+    a int = foo();
+    b int = bar();
+    if (a > b) {
+        tmp int = a;
+        a = b;
+        b = tmp;
     }
-    return 0;
+    return a;
 }
 
 func foo() -> int {
+    return 42;
+}
+
+func bar() -> int {
     return 42;
 }

@@ -263,7 +263,7 @@ class TestSCCP(base.TestBase):
             ; succ: []
         """).strip()
         self.assert_ir(src, expected_ir)
-    
+
     def test_complicacted_induction_dont_break_sccp(self):
         src = self.make_main("""
             n int = 0;
@@ -272,7 +272,7 @@ class TestSCCP(base.TestBase):
             }
             return n;
         """)
-        
+
         expected_ir = textwrap.dedent("""
             ; pred: []
             BB0: ; [entry]
@@ -313,10 +313,9 @@ class TestSCCP(base.TestBase):
                 i_v3 = %5_v1 + 1
                 jmp BB3
             ; succ: [BB3] 
-        """).strip() 
-        
+        """).strip()
+
         self.assert_ir(src, expected_ir)
-        
 
     def test_break_on_first_iter_transitional(self):
         src = self.make_main("""
@@ -425,7 +424,7 @@ class TestSCCP(base.TestBase):
             ; succ: []
         """).strip()
         self.assert_ir(src, expected_ir)
-    
+
     def test_uncconditional_for_loop(self):
         src = self.make_main("""
             i int = 0;
@@ -441,4 +440,4 @@ class TestSCCP(base.TestBase):
 
         expected_ir = textwrap.dedent("""
         """).strip()
-        self.assert_ir(src, expected_ir)       
+        self.assert_ir(src, expected_ir)

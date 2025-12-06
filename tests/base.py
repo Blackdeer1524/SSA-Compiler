@@ -12,7 +12,7 @@ from src.ssa.ssa import SSABuilder
 
 class TestBase(unittest.TestCase):
     def __init__(self, passes: list = [], *args):
-        self.passes = passes 
+        self.passes = passes
         super().__init__(*args)
 
     def setUp(self) -> None:
@@ -54,12 +54,21 @@ class TestBase(unittest.TestCase):
         if expected_ir == ir:
             return
 
+        no_opts_ir = (
+            self.parse_programm(src)
+            .to_IR()
+            .strip()
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
         ir = ir.replace("<", "&lt;").replace(">", "&gt;")
         expected_ir = expected_ir.replace("<", "&lt;").replace(">", "&gt;")
 
         expected_graph = ir_to_graphviz(expected_ir)
         actual_graph = ir_to_graphviz(ir)
         actual_graph = re.sub(r"(BB\d+)", r"\1'", actual_graph)
+        no_opts_graph = ir_to_graphviz(no_opts_ir)
+        no_opts_graph = re.sub(r"(BB\d+)", r"\1^", no_opts_graph)
 
         message = textwrap.dedent(f"""
         digraph G {{
@@ -73,6 +82,12 @@ class TestBase(unittest.TestCase):
                 label="Actual";
                 color=red;
             {actual_graph}
+            }}
+
+            subgraph cluster_original {{
+                label="Original";
+                color=blue;
+            {no_opts_graph}
             }}
         }}
         """)

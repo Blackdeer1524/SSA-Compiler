@@ -251,6 +251,8 @@ class CFG:
         dominance_frontier: dict["BasicBlock", set["BasicBlock"]],
     ):
         res = f"digraph {self.name} {{\n"
+        res += "rankdir=TB;\n"
+        res += "splines=ortho;\n"
         res += "node [shape=box]\n"
 
         for bb in self:
@@ -457,8 +459,9 @@ class CFGBuilder:
         initial_cond_block = self._new_block("condition check")
         preheader_block = self._new_block("loop preheader")
         header_block = self._new_block("loop header")
-        exit_block = self._new_block("loop exit")
         update_block = self._new_block("loop update")
+        tail_block = self._new_block("loop tail")
+        exit_block = self._new_block("loop exit")
 
         self.current_block.append(InstUncondJump(initial_cond_block))
         self.current_block.add_child(initial_cond_block)
@@ -476,7 +479,7 @@ class CFGBuilder:
         self.current_block.append(InstUncondJump(header_block))
         self.current_block.add_child(header_block)
 
-        self.break_targets.append(exit_block)
+        self.break_targets.append(tail_block)
         self.continue_targets.append(update_block)
         self._switch_to_block(header_block)
         self._build_block(stmt.body)
@@ -494,10 +497,15 @@ class CFGBuilder:
             InstCmp(cond_var2, SSAConstant(1), header_block, exit_block)
         )
         self.current_block.add_child(header_block)
-        self.current_block.add_child(exit_block)
+        self.current_block.add_child(tail_block)
 
         self.break_targets.pop()
         self.continue_targets.pop()
+
+        self._switch_to_block(tail_block)
+        self.current_block.append(InstUncondJump(exit_block)) 
+        self.current_block.add_child(exit_block)
+        
         self._switch_to_block(exit_block)
 
     def _build_unconditional_loop(self, stmt: UnconditionalLoop):

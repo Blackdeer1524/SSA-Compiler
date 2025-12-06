@@ -1,17 +1,24 @@
+seed = 37
+last_color = seed
+
+colors = {}
+
 def color_label(l: str) -> str:
-    h = hash(l)
-    b = hex(h % 16)[2:]
-    h //= 16
+    global last_color
+    if colors.get(l) is None:
+        r = hex((last_color + 170) % 256)[2:]
+        g = hex((last_color + 85) % 256)[2:]
+        b = hex(last_color % 256)[2:]
+        
+        if len(r) == 1:
+            r = "0" + r
+        if len(b) == 1:
+            b = "0" + b
+        if len(g) == 1:
+            g = "0" + g
+        
+        colors[l] = f"#{r}{g}{b}"
 
-    g = hex(h % 16)[2:]
-    h //= 16
+        last_color += seed
 
-    r = hex(h % 16)[2:]
-
-    if len(r) == 1:
-        r = r + "F"
-    if len(b) == 1:
-        b = b + "F"
-    if len(g) == 1:
-        g = g + "F"
-    return f'<B><font color="#{r}{g}{b}">{l}</font></B>'
+    return f'<B><font color="{colors[l]}">{l}</font></B>'

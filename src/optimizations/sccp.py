@@ -341,19 +341,17 @@ class SCCP:
         else:
             return
 
-    # ---------- Rewriting ----------
     def _rewrite_cfg(self):
         assert self.cfg is not None
 
-        reachable = self.executable_blocks.copy()
-        for bb in list(self.cfg):
-            if bb in reachable:
+        for bb in self.cfg:
+            if bb in self.executable_blocks:
                 continue
 
             for pred in bb.preds:
                 pred.succ.remove(bb)
 
-            for succ in list(bb.succ):
+            for succ in bb.succ:
                 succ.preds.remove(bb)
                 for phi in succ.phi_nodes.values():
                     phi.rhs.pop(bb.label, None)
@@ -364,10 +362,12 @@ class SCCP:
         assert self.cfg is not None
 
         for bb in self.cfg:
+            pred_labels = set(pred.label for pred in bb.preds)
             for phi_node in bb.phi_nodes.values():
                 new_rhs = {
                     pred: self._replace_in_rhs(val)
                     for pred, val in phi_node.rhs.items()
+                    if pred in pred_labels
                 }
                 phi_node.rhs = new_rhs
 
