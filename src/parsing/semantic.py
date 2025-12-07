@@ -786,6 +786,28 @@ class SemanticAnalyzer:
                     )
                 )
 
+        # Check for duplicate array variable arguments
+        array_vars_seen: dict[str, int] = {}  # variable name -> argument index
+        for i, (arg_expr, (param_name, param_type)) in enumerate(
+            zip(args, func_info.params)
+        ):
+            # Only check direct variable references (Identifier), not array element accesses
+            if isinstance(arg_expr, Identifier):
+                var_name = arg_expr.name
+                arg_type = self._analyze_expression(arg_expr)
+                # Check if this is an array type
+                if isinstance(arg_type, Type) and arg_type.is_array():
+                    if var_name in array_vars_seen:
+                        self.errors.append(
+                            SemanticError(
+                                f"Cannot pass the same array variable '{var_name}' as multiple arguments to function '{name}'",
+                                line,
+                                column,
+                            )
+                        )
+                    else:
+                        array_vars_seen[var_name] = i
+
         return func_info
 
 

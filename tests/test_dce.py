@@ -130,3 +130,203 @@ class TestDCE(base.TestBase):
         """).strip()
 
         self.assert_ir(src, expected_ir)
+
+    def test_dead_array_init(self):
+        src = self.make_main("""
+            let arr [64]int = {};
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB0]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_array_store(self):
+        src = self.make_main("""
+            let arr [64]int = {};
+            arr[0] = 42;
+            arr[10] = 100;
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_array_load(self):
+        src = self.make_main("""
+            let arr [64]int = {};
+            let x int = arr[0];
+            let y int = arr[10];
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_unary_operation(self):
+        src = self.make_main("""
+            let a int = 5;
+            let b int = -a;
+            let c int = !a;
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_phi_with_dead_incoming(self):
+        src = self.make_main("""
+            let a int = 0;
+            if (a == 0) {
+                a = 10;
+            } else {
+                a = 20;
+            }
+            let b int = a;
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_nested_loop(self):
+        src = self.make_main("""
+            let a int = 0;
+            for (let i int = 0; i < 10; i = i + 1) {
+                for (let j int = 0; j < 10; j = j + 1) {
+                    a = a + 1;
+                }
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_after_return(self):
+        src = self.make_main("""
+            let a int = 5;
+            return 0;
+            a = 10;
+            let b int = a + 1;
+            return b;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_complex_expression(self):
+        src = self.make_main("""
+            let a int = 5;
+            let b int = 10;
+            let c int = (a + b) * 2;
+            let d int = c - a;
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_array_in_conditional(self):
+        src = self.make_main("""
+            let arr [64]int = {};
+            let x int = 0;
+            if (x == 0) {
+                arr[0] = 42;
+                let y int = arr[0];
+            } else {
+                arr[10] = 100;
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_phi_chain(self):
+        src = self.make_main("""
+            let a int = 0;
+            let b int = 0;
+            for (let i int = 0; i < 10; i = i + 1) {
+                a = a + 1;
+                b = a;
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_binary_operations(self):
+        src = self.make_main("""
+            let a int = 5;
+            let b int = 10;
+            let c int = a + b;
+            let d int = a * b;
+            let e int = a - b;
+            let f int = a / b;
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_array_multi_dim(self):
+        src = self.make_main("""
+            let matrix [64][64]int = {};
+            matrix[0][0] = 1;
+            let x int = matrix[0][0];
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_code_in_one_branch(self):
+        src = self.make_main("""
+            let a int = 1;
+            if (a == 1) {
+                let b int = 10;
+                let c int = b + 5;
+            } else {
+                return 1;
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_loop_with_phi(self):
+        src = self.make_main("""
+            let sum int = 0;
+            for (let i int = 0; i < 10; i = i + 1) {
+                sum = sum + i;
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""""").strip()
+
+        self.assert_ir(src, expected_ir)

@@ -193,6 +193,9 @@ class DCE:
                     case InstGetArgument(_, _):
                         if inst in self.live_insts:
                             new_insts.append(inst)
+                    case InstArrayInit(_, _):
+                        if inst in self.live_insts:
+                            new_insts.append(inst)
                     case _:
                         new_insts.append(inst)
             bb.instructions = new_insts

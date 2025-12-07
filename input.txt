@@ -1,10 +1,5 @@
 func main() -> void {
-    let a [64][64]int = {};
-    let b [64][64]int = {};
-    let c [64][64]int = {};
-    
-    matrix_mult(a, b, c);
-    print(c);
+    let a [64]int = {};
 }
 
 func matrix_mult(A [64][64]int, B [64][64]int, C [64][64]int) -> void {
