@@ -285,7 +285,25 @@ class SemanticAnalyzer:
         
         # Check for array initialization
         if isinstance(stmt.value, ArrayInit):
-            # Array initialization with {} is allowed
+            # Array initialization with {} is only allowed for array types
+            if not var_type.is_array():
+                self.errors.append(
+                    SemanticError(
+                        f"Cannot initialize non-array variable '{stmt.name}' of type {var_type} with array syntax",
+                        stmt.line,
+                        stmt.column,
+                    )
+                )
+                # Still declare the variable for error recovery
+                try:
+                    self.current_scope.declare_variable(
+                        stmt.name, var_type, stmt.line, stmt.column
+                    )
+                except SemanticError as e:
+                    self.errors.append(e)
+                return
+            
+            # Array initialization with {} is allowed for array types
             # Declare variable in current scope
             try:
                 self.current_scope.declare_variable(

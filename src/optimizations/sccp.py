@@ -129,10 +129,10 @@ class SCCP:
                         if value is not None:
                             for v in self._iter_uses_from_vals([value]):
                                 self.uses[v].add(inst)
-                    case InstStore(lhs, addr):
-                        if lhs.version is not None:
-                            self.defs[(lhs.name, lhs.version)] = inst
-                        for v in self._iter_uses_from_rhs(addr):
+                    case InstStore(addr, value):
+                        for v in self._iter_uses_from_vals([addr]):
+                            self.uses[v].add(inst)
+                        for v in self._iter_uses_from_rhs(value):
                             self.uses[v].add(inst)
                     case InstArrayInit(lhs):
                         if lhs.version is not None:
