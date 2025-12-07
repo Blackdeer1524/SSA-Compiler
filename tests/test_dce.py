@@ -45,39 +45,46 @@ class TestDCE(base.TestBase):
             ; succ: [BB2]
 
             ; pred: [BB0]
-            BB2: ; [loop init]
+            BB2: ; [condition check]
                 i_v1 = 0
-                jmp BB3
-            ; succ: [BB3]
+                %0_v1 = i_v1 &lt; 10
+                cmp(%0_v1, 1)
+                if CF == 1 then jmp BB3 else jmp BB7
+            ; succ: [BB3, BB7]
 
             ; pred: [BB2, BB6]
-            BB3: ; [loop header]
-                i_v2 = ϕ(BB2: i_v1, BB6: i_v3)
-
-                %0_v1 = i_v2 &lt; 10
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB5 else jmp BB4
-            ; succ: [BB5, BB4]
-
-            ; pred: [BB3]
-            BB4: ; [loop exit]
+            BB7: ; [loop exit]
                 return(1)
             ; succ: [BB1]
 
-            ; pred: [BB4]
+            ; pred: [BB7]
             BB1: ; [exit]
             ; succ: []
 
-            ; pred: [BB3]
-            BB5: ; [loop body]
-                jmp BB6
-            ; succ: [BB6]
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                i_v2 = ϕ(BB3: i_v1, BB5: i_v3)
+
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB4]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %7_v1 = i_v3 &lt; 10
+                cmp(%7_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB7
+            ; succ: [BB4, BB6]
 
             ; pred: [BB5]
-            BB6: ; [loop update]
-                i_v3 = i_v2 + 1
-                jmp BB3
-            ; succ: [BB3]
+            BB6: ; [loop tail]
+                jmp BB7
+            ; succ: [BB7]
         """).strip()
 
         self.assert_ir(src, expected_ir)
