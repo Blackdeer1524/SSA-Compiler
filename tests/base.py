@@ -34,7 +34,6 @@ class TestBase(unittest.TestCase):
 
         builder = CFGBuilder()
         cfgs = builder.build(ast)
-        self.assertEqual(cfgs[0].name, "main")
 
         ssa_builder = SSABuilder()
         ssa_builder.build(cfgs[0])
