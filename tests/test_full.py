@@ -25,6 +25,105 @@ class TestEndToEnd(base.TestBase):
         """
 
         expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                (<~)mat_v1    = getarg(0)
+                (<~)vec_v1    = getarg(1)
+                (<~)result_v1 = getarg(2)
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [condition check]
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                i_v2 = ϕ(BB3: 0, BB5: i_v3)
+
+                jmp BB8
+            ; succ: [BB8]
+
+            ; pred: [BB4]
+            BB8: ; [condition check]
+                jmp BB9
+            ; succ: [BB9]
+
+            ; pred: [BB8]
+            BB9: ; [loop preheader]
+                %11_v1 = i_v2 * 64
+                %12_v1 = 0 + %11_v1
+                jmp BB10
+            ; succ: [BB10]
+
+            ; pred: [BB9, BB11]
+            BB10: ; [loop header]
+                sum_v2 = ϕ(BB9: 0, BB11: sum_v3)
+                j_v2 = ϕ(BB9: 0, BB11: j_v3)
+
+                %14_v1 = j_v2 * 1
+                %15_v1 = %12_v1 + %14_v1
+                (mat_v1<~)%16_v1 = %15_v1 + (<~)mat_v1
+                %8_v1 = Load((mat_v1<~)%16_v1)
+                %20_v1 = j_v2 * 1
+                %21_v1 = 0 + %20_v1
+                (vec_v1<~)%22_v1 = %21_v1 + (<~)vec_v1
+                %17_v1 = Load((vec_v1<~)%22_v1)
+                %7_v1 = %8_v1 * %17_v1
+                sum_v3 = sum_v2 + %7_v1
+                jmp BB11
+            ; succ: [BB11]
+
+            ; pred: [BB10]
+            BB11: ; [loop update]
+                j_v3 = j_v2 + 1
+                %25_v1 = j_v3 < 64
+                cmp(%25_v1, 1)
+                if CF == 1 then jmp BB10 else jmp BB12
+            ; succ: [BB10, BB12]
+
+            ; pred: [BB11]
+            BB12: ; [loop tail]
+                jmp BB13
+            ; succ: [BB13]
+
+            ; pred: [BB12]
+            BB13: ; [loop exit]
+                sum_v4 = ϕ(BB12: sum_v3)
+
+                %29_v1 = i_v2 * 1
+                %30_v1 = 0 + %29_v1
+                (result_v1<~)%31_v1 = %30_v1 + (<~)result_v1
+                Store((result_v1<~)%31_v1, sum_v4)
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB13]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %35_v1 = i_v3 < 64
+                cmp(%35_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
+
+            ; pred: [BB5]
+            BB6: ; [loop tail]
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB6]
+            BB7: ; [loop exit]
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
         """).strip()
 
         self.assert_ir(src, expected_ir)
