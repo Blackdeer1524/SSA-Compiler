@@ -35,8 +35,6 @@ class DCE:
         self.live_insts: set[Instruction | InstPhi] = set()
         self.live_vars: set[tuple[str, int]] = set()
 
-        self.bfs_depth: dict[BasicBlock, int] = {}
-
     def run(self, cfg: CFG):
         self.cfg = cfg
         self._build_metadata(cfg)
@@ -44,9 +42,7 @@ class DCE:
         self._rewrite(cfg)
 
     def _build_metadata(self, cfg: CFG):
-        for depth, bb in cfg.bfs():
-            self.bfs_depth[bb] = depth
-
+        for bb in cfg:
             # Phis
             for phi in bb.phi_nodes.values():
                 self.inst_block[phi] = bb
@@ -124,21 +120,17 @@ class DCE:
 
             self.live_vars.add(key)
             var_work.append(key)
+            self.live_insts.add(inst)
 
-        ptr_def_block = self.inst_block[self.defs[(unwrap(ptr_seed.base_pointer))]]
-        q = [
-            pred
-            for pred in bb.preds
-            if self.bfs_depth[ptr_def_block]
-            <= self.bfs_depth[pred]
-            < self.bfs_depth[bb]
-        ]
-        seen: set[BasicBlock] = set([bb])
+        q = [pred for pred in bb.preds if pred != bb]
+        seen: set[BasicBlock] = set()  # do NOT include bb
         while len(q) > 0:
             cur = q.pop()
+            if cur in seen:
+                continue
             seen.add(cur)
 
-            deadend = False
+            dead_end = False
             for inst in cur.instructions[::-1]:
                 if not isinstance(inst, InstStore):
                     continue
@@ -148,23 +140,22 @@ class DCE:
 
                 key = (inst.dst_address.name, unwrap(inst.dst_address.version))
                 if key in self.live_vars:
-                    deadend = True
+                    dead_end = True
                     break
+
+                self.live_insts.add(inst)
 
                 self.live_vars.add(key)
                 var_work.append(key)
 
-            if not deadend:
-                q.extend(
-                    (
-                        pred
-                        for pred in cur.preds
-                        if pred not in seen
-                        and self.bfs_depth[ptr_def_block]
-                        <= self.bfs_depth[pred]
-                        < self.bfs_depth[cur]
-                    )
-                )
+                if isinstance(inst.value, SSAVariable):
+                    key = (inst.value.name, unwrap(inst.value.version))
+                    if key not in self.live_vars:
+                        self.live_vars.add(key)
+                        var_work.append(key)
+
+            if not dead_end:
+                q.extend((pred for pred in cur.preds if pred not in seen))
 
     # ---------- Liveness ----------
     def _seed_roots(self, cfg: CFG, var_work: deque[tuple[str, int]]):

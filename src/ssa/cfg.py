@@ -89,7 +89,7 @@ class OpLoad(Operation):
     addr: "SSAVariable"
 
     def __repr__(self):
-        return f"*({self.addr})"
+        return f"Load({self.addr})"
 
 
 @dataclass
@@ -174,7 +174,7 @@ class InstStore(Instruction):
     value: SSAValue
 
     def to_IR(self):
-        return f"*({self.dst_address}) = {self.value}"
+        return f"Store({self.dst_address}, {self.value})"
 
 
 @dataclass(eq=False)
@@ -430,15 +430,8 @@ class CFGBuilder:
 
         return cfg
 
-    def _build_block(self, syntax_block: Block, bb: BasicBlock):
+    def _build_block(self, syntax_block: Block):
         assert self.cur_block is not None
-
-        raise NotImplementedError("bb.symbol_table = ....")
-
-        # inner_bb = self._new_block(unwrap(syntax_block.symbol_table))
-        # self.cur_block.instructions.append(InstUncondJump(inner_bb))
-        # self.cur_block.add_child(inner_bb)
-        # self._switch_to_block(inner_bb)
 
         for stmt in syntax_block.statements:
             self._build_statement(stmt)
@@ -464,6 +457,13 @@ class CFGBuilder:
             case Continue():
                 self._build_continue(stmt)
             case Block():
+                assert self.cur_block is not None
+
+                bb = self._new_block(unwrap(stmt.symbol_table))
+                self.cur_block.instructions.append(InstUncondJump(bb))
+                self.cur_block.add_child(bb)
+                self._switch_to_block(bb)
+
                 self._build_block(stmt)
 
     def _build_assignment(self, stmt: Assignment):
@@ -820,7 +820,7 @@ class CFGBuilder:
             self._new_block(self.cur_block.symbol_table, "after return")
         )
 
-    def _build_break(self, stmt: Break):
+    def _build_break(self, _: Break):
         assert self.cur_block is not None, "Current block must be set"
 
         assert self.break_targets
@@ -829,7 +829,7 @@ class CFGBuilder:
             self.cur_block.add_child(target)
             self.cur_block.append(InstUncondJump(target))
 
-    def _build_continue(self, stmt: Continue):
+    def _build_continue(self, _: Continue):
         assert self.cur_block is not None, "Current block must be set"
 
         if self.continue_targets:

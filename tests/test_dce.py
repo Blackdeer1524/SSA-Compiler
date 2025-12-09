@@ -161,13 +161,6 @@ class TestDCE(base.TestBase):
         expected_ir = textwrap.dedent("""
             ; pred: []
             BB0: ; [entry]
-                arr_v1 = array_init([64])
-                %1_v1 = 0 * 1
-                %2_v1 = arr_v1 + %1_v1
-                *(%2_v1) = 42
-                %5_v1 = 10 * 1
-                %6_v1 = arr_v1 + %5_v1
-                *(%6_v1) = 100
                 return(0)
             ; succ: [BB1]
 
@@ -407,23 +400,6 @@ class TestDCE(base.TestBase):
 
         self.assert_ir(src, expected_ir)
 
-    def test_dead_array_in_conditional(self):
-        src = self.make_main("""
-            let arr [64]int = {};
-            let x int = 0;
-            if (x == 0) {
-                arr[0] = 42;
-                let y int = arr[0];
-            } else {
-                arr[10] = 100;
-            }
-            return 0;
-        """)
-
-        expected_ir = textwrap.dedent("""""").strip()
-
-        self.assert_ir(src, expected_ir)
-
     def test_dead_phi_chain(self):
         src = self.make_main("""
             let a int = 0;
@@ -435,7 +411,54 @@ class TestDCE(base.TestBase):
             return 0;
         """)
 
-        expected_ir = textwrap.dedent("""""").strip()
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [condition check]
+                i_v1 = 0
+                %0_v1 = i_v1 &lt; 10
+                cmp(%0_v1, 1)
+                if CF == 1 then jmp BB3 else jmp BB7
+            ; succ: [BB3, BB7]
+
+            ; pred: [BB2, BB6]
+            BB7: ; [loop exit]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                i_v2 = ϕ(BB3: i_v1, BB5: i_v3)
+
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB4]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %7_v1 = i_v3 &lt; 10
+                cmp(%7_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
+
+            ; pred: [BB5]
+            BB6: ; [loop tail]
+                jmp BB7
+            ; succ: [BB7] 
+        """).strip()
 
         self.assert_ir(src, expected_ir)
 
@@ -450,7 +473,16 @@ class TestDCE(base.TestBase):
             return 0;
         """)
 
-        expected_ir = textwrap.dedent("""""").strip()
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB0]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
 
         self.assert_ir(src, expected_ir)
 
@@ -462,7 +494,63 @@ class TestDCE(base.TestBase):
             return 0;
         """)
 
-        expected_ir = textwrap.dedent("""""").strip()
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB0]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_dead_array_in_conditional_(self):
+        src = """
+        func main() -> int {
+            let arr [64]int = {};
+            let x int = 0;
+            if (x == 0) {
+                arr[0] = 42;
+                let y int = arr[0];
+            } else {
+                arr[10] = 100;
+
+            }
+            return 0;
+        }
+        """
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                x_v1 = 0
+                %0_v1 = x_v1 == 0
+                cmp(%0_v1, 1)
+                if CF == 1 then jmp BB2 else jmp BB4
+            ; succ: [BB4, BB2]
+
+            ; pred: [BB0]
+            BB2: ; [then]
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB4, BB2]
+            BB3: ; [merge]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB3]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB0]
+            BB4: ; [else]
+                jmp BB3
+            ; succ: [BB3]       
+        """).strip()
 
         self.assert_ir(src, expected_ir)
 
@@ -478,7 +566,34 @@ class TestDCE(base.TestBase):
             return 0;
         """)
 
-        expected_ir = textwrap.dedent("""""").strip()
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                a_v1 = 1
+                %0_v1 = a_v1 == 1
+                cmp(%0_v1, 1)
+                if CF == 1 then jmp BB2 else jmp BB4
+            ; succ: [BB4, BB2]
+
+            ; pred: [BB0]
+            BB2: ; [then]
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB2]
+            BB3: ; [merge]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB4, BB3]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB0]
+            BB4: ; [else]
+                return(1)
+            ; succ: [BB1]
+        """).strip()
 
         self.assert_ir(src, expected_ir)
 
@@ -491,11 +606,58 @@ class TestDCE(base.TestBase):
             return 0;
         """)
 
-        expected_ir = textwrap.dedent("""""").strip()
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [condition check]
+                i_v1 = 0
+                %0_v1 = i_v1 &lt; 10
+                cmp(%0_v1, 1)
+                if CF == 1 then jmp BB3 else jmp BB7
+            ; succ: [BB3, BB7]
+
+            ; pred: [BB2, BB6]
+            BB7: ; [loop exit]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                i_v2 = ϕ(BB3: i_v1, BB5: i_v3)
+
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB4]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %7_v1 = i_v3 &lt; 10
+                cmp(%7_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
+
+            ; pred: [BB5]
+            BB6: ; [loop tail]
+                jmp BB7
+            ; succ: [BB7]
+        """).strip()
 
         self.assert_ir(src, expected_ir)
 
-    def test_array_dce(self):
+    def test_array_with_hard_branches_dce(self):
         src = """
         func main() -> void {
             let a [4][4]int = {};  // dead code
@@ -514,43 +676,110 @@ class TestDCE(base.TestBase):
         expected_ir = textwrap.dedent("""
             ; pred: []
             BB0: ; [entry]
-                jmp BB2
-            ; succ: [BB2]
+                cmp(1, 1)
+                if CF == 1 then jmp BB2 else jmp BB3
+            ; succ: [BB3, BB2]
 
             ; pred: [BB0]
-            BB2:
-                cmp(1, 1)
-                if CF == 1 then jmp BB3 else jmp BB4
-            ; succ: [BB4, BB3]
-
-            ; pred: [BB2]
-            BB3: ; [then]
-                jmp BB5
-            ; succ: [BB5]
-
-            ; pred: [BB3]
-            BB5:
+            BB2: ; [then]
                 (a_2&lt;~)a_v2 = array_init([5][5])
                 %10_v1 = 1 * 4
                 %11_v1 = 0 + %10_v1
                 %13_v1 = 1 * 1
                 %14_v1 = %11_v1 + %13_v1
                 (a_2&lt;~)%15_v1 = %14_v1 + (a_2&lt;~)a_v2
+                Store((a_2&lt;~)%15_v1, 2)
                 %17_v1 = foo_5_5((a_2&lt;~)a_v2)
-                jmp BB4
-            ; succ: [BB4]
+                jmp BB3
+            ; succ: [BB3]
 
-            ; pred: [BB2, BB5]
-            BB4: ; [merge]
+            ; pred: [BB0, BB2]
+            BB3: ; [merge]
             ; succ: [BB1]
 
-            ; pred: [BB4]
+            ; pred: [BB3]
             BB1: ; [exit]
             ; succ: []
 
-            ; pred: [BB2, BB5]
-            BB4: ; [merge]
+            ; pred: [BB0, BB2]
+            BB3: ; [merge]
             ; succ: [BB1]
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_array_dce_loop(self):
+        src = """
+        func main() -> void {
+            let a [5]int = {};
+            for (let i int = 0; i < 10; i = i + 1) {
+                a[i] = i;
+                foo_5(a);
+                a[i] = i * i;
+            }
+        }
+        
+        func foo_5(x [5]int) -> void {
+        }
+        """
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                (a_1&lt;~)a_v1 = array_init([5])
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [condition check]
+                i_v1 = 0
+                %0_v1 = i_v1 &lt; 10
+                cmp(%0_v1, 1)
+                if CF == 1 then jmp BB3 else jmp BB7
+            ; succ: [BB3, BB7]
+
+            ; pred: [BB2, BB6]
+            BB7: ; [loop exit]
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                i_v2 = ϕ(BB3: i_v1, BB5: i_v3)
+
+                %4_v1 = i_v2 * 1
+                %5_v1 = 0 + %4_v1
+                (a_1&lt;~)%6_v2 = %5_v1 + (a_1&lt;~)a_v1
+                Store((a_1&lt;~)%6_v2, i_v2)
+                %8_v1 = foo_5((a_1&lt;~)a_v1)
+                %11_v1 = i_v2 * 1
+                %12_v1 = 0 + %11_v1
+                (a_1&lt;~)%13_v2 = %12_v1 + (a_1&lt;~)a_v1
+                %14_v1 = i_v2 * i_v2
+                Store((a_1&lt;~)%13_v2, %14_v1)
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB4]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %19_v1 = i_v3 &lt; 10
+                cmp(%19_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
+
+            ; pred: [BB5]
+            BB6: ; [loop tail]
+                jmp BB7
+            ; succ: [BB7]
         """).strip()
 
         self.assert_ir(src, expected_ir)

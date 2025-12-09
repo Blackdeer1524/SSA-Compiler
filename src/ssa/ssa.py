@@ -206,12 +206,20 @@ class SSABuilder:
 
         type_info = bb.symbol_table.lookup_variable(var.name)
         if type_info is None:
-            assert isinstance(inst, InstAssign)
-            for v in iter_vars_from_rhs(inst.rhs):
-                if v.base_pointer is None:
-                    continue
-                var.base_pointer = v.base_pointer
-                break
+            match inst:
+                case InstAssign():
+                    for v in iter_vars_from_rhs(inst.rhs):
+                        if v.base_pointer is None:
+                            continue
+                        var.base_pointer = v.base_pointer
+                        break
+                case InstPhi():
+                    for v in inst.rhs.values():
+                        if not isinstance(v, SSAVariable) or v.base_pointer is None:
+                            continue
+                        var.base_pointer = v.base_pointer
+                        break
+
         elif type_info.is_array():
             self.ptr_info[var.name] = (var.name, var.version)
             var.base_pointer = (var.name, var.version)
