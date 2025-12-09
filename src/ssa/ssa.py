@@ -94,7 +94,7 @@ class SSABuilder:
                 case InstArrayInit(lhs):
                     defs.add(lhs.name)
                 case InstStore(addr, rhs):
-                    uses.add(addr.name)
+                    use_val(addr)
                     use_val(rhs)
                 case InstGetArgument(lhs, _):
                     defs.add(lhs.name)
@@ -251,12 +251,6 @@ class SSABuilder:
         for var, c in block_new_assign_count.items():
             self.versions[var] = self.versions[var][:-c]
 
-    def _insert_get_argument_instructions(self):
-        entry = self.cfg.entry
-        for i, arg in enumerate(self.cfg.args):
-            lhs = SSAVariable(arg.name)
-            entry.instructions.append(InstGetArgument(lhs, i))
-
     def build(self, cfg: CFG):
         self.cfg = cfg
         self.idom_tree = compute_dominator_tree(cfg)
@@ -266,7 +260,6 @@ class SSABuilder:
         self.versions: dict[str, list[int]] = defaultdict(lambda: [])
         self.version_counter: dict[str, int] = defaultdict(lambda: 0)
 
-        self._insert_get_argument_instructions()
         self._compute_liveness()
         self._put_phis()
         self._rename_helper(cfg.entry)

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
 import re
-from typing import Iterable, Iterator, Optional, Sequence
+from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
     Function,
@@ -46,7 +46,11 @@ class SSAVariable(SSAValue):
     def __repr__(self):
         res = ""
         if self.base_pointer is not None:
-            res += f"({self.base_pointer[0]}_{self.base_pointer[1]}<~)"
+            if self.base_pointer[0] == self.name and self.base_pointer[1] == self.version:
+                res += "(<~)"
+            else:
+                res += f"({self.base_pointer[0]}_v{self.base_pointer[1]}<~)"
+                
         res += self.name
         if self.version is not None:
             res += f"_v{self.version}"
@@ -423,6 +427,8 @@ class CFGBuilder:
         self.current_cfg = cfg
         self.cur_block = entry
 
+        for i, arg in enumerate(func.args):
+            self.cur_block.append(InstGetArgument(SSAVariable(arg.name), i))
         self._build_block(func.body)
 
         if not self.cur_block.succ:
@@ -476,7 +482,7 @@ class CFGBuilder:
             return
 
         subexpr_ssa_val = self._build_subexpression(stmt.value, stmt.name)
-        if not isinstance(subexpr_ssa_val, SSAVariable):
+        if not isinstance(subexpr_ssa_val, SSAVariable) or subexpr_ssa_val.name != stmt.name:
             lhs = SSAVariable(stmt.name)
             self.cur_block.append(InstAssign(lhs, subexpr_ssa_val))
 
