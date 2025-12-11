@@ -21,6 +21,7 @@ from src.ssa.cfg import (
     SSAValue,
     SSAVariable,
 )
+from src.ssa.helpers import unwrap
 
 
 class DCE:
@@ -34,8 +35,6 @@ class DCE:
         self.live_insts: set[Instruction | InstPhi] = set()
         self.live_vars: set[tuple[str, int]] = set()
 
-        self.block_to_bfs_depth: dict[BasicBlock, int] = {}
-
     def run(self, cfg: CFG):
         self.cfg = cfg
         self._build_metadata(cfg)
@@ -43,9 +42,7 @@ class DCE:
         self._rewrite(cfg)
 
     def _build_metadata(self, cfg: CFG):
-        for depth, bb in cfg.bfs():
-            self.block_to_bfs_depth[bb] = depth
-
+        for bb in cfg:
             # Phis
             for phi in bb.phi_nodes.values():
                 self.inst_block[phi] = bb
@@ -104,41 +101,104 @@ class DCE:
             if isinstance(v, SSAVariable) and v.version is not None:
                 yield (v.name, v.version)
 
-    def _mark_pointer_network(self, name: str, ver: int):
-        self.u
+    def _mark_stores_as_live(
+        self,
+        bb: BasicBlock,
+        ptr_seed: SSAVariable,
+        seed_idx: int,
+        var_work: deque[tuple[str, int]],
+    ):
+        for inst in reversed(bb.instructions[:seed_idx]):
+            if not isinstance(inst, InstStore):
+                continue
+            if inst.dst_address.base_pointer != ptr_seed.base_pointer:
+                continue
 
-    # ---------- Liveness ----------
+            key = (inst.dst_address.name, unwrap(inst.dst_address.version))
+            if key in self.live_vars:
+                return
+
+            self.live_vars.add(key)
+            var_work.append(key)
+            self.live_insts.add(inst)
+
+        q = [pred for pred in bb.preds if pred != bb]
+        seen: set[BasicBlock] = set()  # do NOT include bb
+        while len(q) > 0:
+            cur = q.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+
+            dead_end = False
+            for inst in cur.instructions[::-1]:
+                if not isinstance(inst, InstStore):
+                    continue
+
+                if inst.dst_address.base_pointer != ptr_seed.base_pointer:
+                    continue
+
+                key = (inst.dst_address.name, unwrap(inst.dst_address.version))
+                if key in self.live_vars:
+                    dead_end = True
+                    break
+
+                self.live_insts.add(inst)
+
+                self.live_vars.add(key)
+                var_work.append(key)
+
+                if isinstance(inst.value, SSAVariable):
+                    key = (inst.value.name, unwrap(inst.value.version))
+                    if key not in self.live_vars:
+                        self.live_vars.add(key)
+                        var_work.append(key)
+
+            if not dead_end:
+                q.extend((pred for pred in cur.preds if pred not in seen))
+
     def _seed_roots(self, cfg: CFG, var_work: deque[tuple[str, int]]):
-        def mark_value_live(val: SSAValue):
+        def mark_value_live(bb: BasicBlock, inst_idx: int, val: SSAValue):
             if not isinstance(val, SSAVariable):
                 return
+
             assert val.version is not None
             key = (val.name, val.version)
             if key not in self.live_vars:
                 self.live_vars.add(key)
                 var_work.append(key)
 
-        for inst in (inst for bb in cfg for inst in bb.instructions):
-            match inst:
-                case InstAssign(lhs, rhs):
-                    if isinstance(rhs, OpCall):
-                        # Treat calls as side-effectful roots
+                if val.base_pointer is not None:
+                    self._mark_stores_as_live(bb, val, inst_idx, var_work)
+
+        for bb in cfg:
+            for i, inst in enumerate(bb.instructions):
+                match inst:
+                    case InstGetArgument(lhs):
+                        if lhs.base_pointer is not None:
+                            k = (lhs.name, unwrap(lhs.version))
+                            self.live_vars.add(k)
+                            self.live_insts.add(inst)
+                            self._mark_stores_as_live(cfg.exit, lhs, -1, var_work)
+                    case InstAssign(lhs, rhs):
+                        if isinstance(rhs, OpCall):
+                            # Treat calls as side-effectful roots
+                            self.live_insts.add(inst)
+                            for arg in rhs.args:
+                                mark_value_live(bb, i, arg)
+                    case InstReturn(value):
                         self.live_insts.add(inst)
-                        for arg in rhs.args:
-                            mark_value_live(arg)
-                case InstReturn(value):
-                    self.live_insts.add(inst)
-                    if value is not None:
-                        mark_value_live(value)
-                case InstCmp(left=left, right=right):
-                    # Terminator: always live; seed operands
-                    self.live_insts.add(inst)
-                    for key in self._iter_uses_from_vals([left, right]):
-                        if key not in self.live_vars:
-                            self.live_vars.add(key)
-                            var_work.append(key)
-                case _:
-                    pass
+                        if value is not None:
+                            mark_value_live(bb, i, value)
+                    case InstCmp(left=left, right=right):
+                        # Terminator: always live; seed operands
+                        self.live_insts.add(inst)
+                        for key in self._iter_uses_from_vals([left, right]):
+                            if key not in self.live_vars:
+                                self.live_vars.add(key)
+                                var_work.append(key)
+                    case _:
+                        pass
 
     def _mark_and_sweep(self, cfg: CFG):
         var_work: deque[tuple[str, int]] = deque()
@@ -146,12 +206,17 @@ class DCE:
 
         while var_work:
             key = var_work.popleft()
-            defining_inst = self.defs[key]
-            if defining_inst in self.live_insts:
+            def_inst = self.defs[key]
+            if def_inst in self.live_insts:
                 continue
 
-            self.live_insts.add(defining_inst)
-            match defining_inst:
+            self.live_insts.add(def_inst)
+            match def_inst:
+                case InstStore(dst, rhs):
+                    for op_key in self._iter_uses_from_rhs(rhs):
+                        if op_key not in self.live_vars:
+                            self.live_vars.add(op_key)
+                            var_work.append(op_key)
                 case InstAssign(lhs, rhs):
                     for op_key in self._iter_uses_from_rhs(rhs):
                         if op_key not in self.live_vars:
@@ -196,6 +261,9 @@ class DCE:
                         if inst in self.live_insts:
                             new_insts.append(inst)
                     case InstArrayInit(_, _):
+                        if inst in self.live_insts:
+                            new_insts.append(inst)
+                    case InstStore():
                         if inst in self.live_insts:
                             new_insts.append(inst)
                     case _:

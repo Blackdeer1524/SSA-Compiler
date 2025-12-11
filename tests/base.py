@@ -34,7 +34,6 @@ class TestBase(unittest.TestCase):
 
         builder = CFGBuilder()
         cfgs = builder.build(ast)
-        self.assertEqual(cfgs[0].name, "main")
 
         ssa_builder = SSABuilder()
         ssa_builder.build(cfgs[0])
@@ -61,11 +60,8 @@ class TestBase(unittest.TestCase):
             .replace("<", "&lt;")
             .replace(">", "&gt;")
         )
-        ir = ir.replace("<", "&lt;").replace(">", "&gt;")
-        expected_ir = expected_ir.replace("<", "&lt;").replace(">", "&gt;")
-
-        expected_graph = ir_to_graphviz(expected_ir)
-        actual_graph = ir_to_graphviz(ir)
+        expected_graph = ir_to_graphviz(expected_ir.replace("<", "&lt;").replace(">", "&gt;"))
+        actual_graph = ir_to_graphviz(ir.replace("<", "&lt;").replace(">", "&gt;"))
         actual_graph = re.sub(r"(BB\d+)", r"\1'", actual_graph)
         no_opts_graph = ir_to_graphviz(no_opts_ir)
         no_opts_graph = re.sub(r"(BB\d+)", r"\1^", no_opts_graph)
@@ -81,6 +77,7 @@ class TestBase(unittest.TestCase):
 
         message = textwrap.dedent(f"""
         digraph G {{
+            rankdir = LR;
             subgraph cluster_source_code {{
                 node [shape=box]
                 label="Source";

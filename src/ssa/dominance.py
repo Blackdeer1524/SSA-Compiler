@@ -16,12 +16,10 @@ class DominatorTree:
             start = self.entry
 
         q = [start]
-        visited = set()
         while len(q):
             n = q.pop()
-            visited.add(n)
             yield n
-            q.extend((x for x in self.reversed_idom[n] if x not in visited))
+            q.extend((x for x in self.reversed_idom[n]))
 
 
 def prune_unreachable(cfg: CFG, reachable_blocks: set[BasicBlock]):

@@ -1,67 +1,48 @@
-```
-// пока что поддерживается только int
+# SSA-based compiler
 
-// всё передается на стеке
-func foo(arg int, foo int) -> int {
-    ...
-    return 1 + 2;
-} 
+Небольшой оптимизирующий компилятор с промежуточным представллением в SSA форм.
+
+Пайплайн: лексер → парсер (AST) → семантический анализ → построение CFG → проставление SSA → оптимизации → вывод IR или CFG в Graphviz.
+
+- Оптимизации:
+
+  - `LICM` (вынос инвариантов из циклов),
+  - `SCCP` (разреженная константная пропагация + отсечение недостижимых путей/блоков),
+  - `DCE` (удаление мёртвых инструкций с учётом стор/аргументов).
+
+  Можно отключать отдельными флагами.
+
+- Ввод/вывод: исходник читается из `--input` (по умолчанию `input.txt`). Вывод по умолчанию — CFG в Graphviz на stdout; `--dump-cfg-dot PATH` сохраняет `.dot`, `--dump-ir PATH` — текстовый SSA IR.
+- Управление флагами: `--disable-ssa`, `--disable-licm`, `--disable-sccp`, `--disable-dce`, `--disable-idom-tree`, `--disable-df`. Все флаги оставьте включёнными для полного оптимизирующего конвейера.
+- Тесты: `pytest tests` (см. наборы для лексера/парсера/семантики/SSA/оптимизаций).
+
+## Пример кода
+
+```
+// Поддерживаются int и массивы фикс. размера
+func foo(arg int, foo [64]int) -> int { return arg + foo[2]; }
 
 func main() -> void {
     let a int = 1;
     let b int = 2 + (-a);
-    
-    // array initialization
     let arr [64]int = {};
     let matrix [128][64]int = {};
-    
-    // array element access
     let x int = arr[0];
     let y int = matrix[10][20];
-    
-    // array element assignment
     arr[0] = 42;
     matrix[i][j] = 100;
-    
-    // unconditional loop
-    for {
-        ...
-    }
-    
-    let i int = 0;
-    if (i < 10) {
-        let a int = 20; // forbidden!!!
-    }
-    
-    // `for` loop
-    for (let i int = 0; i < 10; i = i + 1) {
-    }
-    
-    // function calling
-    foo(1, 2);
-    
-    let a int = 1 < 20;
 
-    // branching
-    if (i <= 10 || i > 40 && i + 2 < i - 1) {
-        ...
-    } else { // optional else branch
-        ...
-    }
-    
-    // break and continue
-    for (let i int = 0; i < 10; i = i + 1) {
-        if (i == 5) {
-            break;
-        }
-        if (i == 3) {
-            continue;
-        }
-    }
+    for { /* unconditional */ }
+    for (let i int = 0; i < 10; i = i + 1) { }
+
+    if (i <= 10 || i > 40 && i + 2 < i - 1) { ... } else { ... }
+
+    foo(1, arr);
+    let flag int = 1 < 20;
 }
 ```
 
-## Grammar
+## Грамматика
 
 ```
 PROGRAMM ::= FUNCTION+
@@ -70,14 +51,14 @@ FUNCTION ::= func %name% "(" ARG_LIST ")" "->" TYPE "{" BLOCK "}"
 
 ARG_LIST ::= EPSILON | ARG ("," ARG)*
 
-ARG ::= %name% TYPE 
+ARG ::= %name% TYPE
 
 BLOCK ::= "{" STATEMENTS "}"
 
 STATEMENTS ::= STATEMENT*
 
-STATEMENT ::= 
-    ASSIGNMENT 
+STATEMENT ::=
+    ASSIGNMENT
     | REASSIGNMENT
     | CONDITION
     | LOOP
@@ -95,7 +76,7 @@ EXPR_LVALUE ::= %name% ("[" EXPR "]")*
 
 CONDITION ::= if "(" EXPR ")" BLOCK [else BLOCK]
 
-LOOP ::= 
+LOOP ::=
     for BLOCK
     | for "(" ASSIGNMENT ";" EXPR ";" REASSIGNMENT ")" BLOCK
 
@@ -121,12 +102,12 @@ EXPR_ADD ::= EXPR_MUL (("+" | "-") EXPR_MUL)*
 
 EXPR_MUL ::= EXPR_UNARY (("*" | "/" | "%") EXPR_UNARY)*
 
-EXPR_UNARY ::= 
+EXPR_UNARY ::=
     EXPR_ATOM
     | "-" EXPR_UNARY
     | "!" EXPR_UNARY
 
-EXPR_ATOM ::= 
+EXPR_ATOM ::=
     %name% ("[" EXPR "]")*
     | %integer%
     | "(" EXPR ")"

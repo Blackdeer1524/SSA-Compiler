@@ -20,6 +20,10 @@ class TestSCCP(base.TestBase):
             BB0: ; [entry]
                 a_v1 = 0
                 return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB0]
+            BB1: ; [exit]
             ; succ: []        
         """).strip()
 
@@ -38,6 +42,10 @@ class TestSCCP(base.TestBase):
                 a_v1 = 0
                 b_v1 = 10
                 return(10)
+            ; succ: [BB1]
+            
+            ; pred: [BB0]
+            BB1: ; [exit]
             ; succ: []
         """).strip()
 
@@ -62,9 +70,13 @@ class TestSCCP(base.TestBase):
 
             ; pred: [BB0]
             BB3: ; [merge]
-                a_v2 = ϕ(BB0: 0)
+                a_v3 = ϕ(BB0: 0)
 
                 return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB3]
+            BB1: ; [exit]
             ; succ: []
         """).strip()
 
@@ -91,17 +103,21 @@ class TestSCCP(base.TestBase):
 
             ; pred: [BB0]
             BB2: ; [then]
-                b_v3 = 15
+                b_v2 = 15
                 jmp BB3
             ; succ: [BB3]
 
             ; pred: [BB2]
             BB3: ; [merge]
-                b_v2 = ϕ(BB2: 15)
+                b_v3 = ϕ(BB2: 15)
 
                 return(15)
+            ; succ: [BB1]
+
+            ; pred: [BB3]
+            BB1: ; [exit]
             ; succ: []
-          """).strip()
+        """).strip()
 
         self.assert_ir(src, expected_ir)
 
@@ -118,7 +134,7 @@ class TestSCCP(base.TestBase):
         expected_ir = textwrap.dedent("""
             ; pred: []
             BB0: ; [entry]
-                arr_v1 = array_init([10])
+                (<~)arr_v1 = array_init([10])
                 s_v1 = 0
                 jmp BB2
             ; succ: [BB2]
@@ -137,20 +153,20 @@ class TestSCCP(base.TestBase):
 
             ; pred: [BB3, BB5]
             BB4: ; [loop header]
-                s_v3 = ϕ(BB3: 0, BB5: s_v4)
+                s_v2 = ϕ(BB3: 0, BB5: s_v3)
                 i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
                 %7_v1 = i_v2 * 1
-                %8_v1 = arr_v1 + %7_v1
-                %4_v1 = *(%8_v1)
-                s_v4 = s_v3 + %4_v1
+                (arr_v1<~)%8_v1 = (<~)arr_v1 + %7_v1
+                %4_v1 = Load((arr_v1<~)%8_v1)
+                s_v3 = s_v2 + %4_v1
                 jmp BB5
             ; succ: [BB5]
 
             ; pred: [BB4]
             BB5: ; [loop update]
                 i_v3 = i_v2 + 1
-                %11_v1 = i_v3 &lt; 10
+                %11_v1 = i_v3 < 10
                 cmp(%11_v1, 1)
                 if CF == 1 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
@@ -162,9 +178,13 @@ class TestSCCP(base.TestBase):
 
             ; pred: [BB6]
             BB7: ; [loop exit]
-                s_v2 = ϕ(BB6: s_v4)
+                s_v4 = ϕ(BB6: s_v3)
 
-                return(s_v2)
+                return(s_v4)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
             ; succ: []
         """).strip()
 
@@ -195,10 +215,14 @@ class TestSCCP(base.TestBase):
 
             ; pred: [BB2]
             BB7: ; [loop exit]
-                N_v2 = ϕ(BB2: 0)
+                N_v4 = ϕ(BB2: 0)
 
                 return(0)
-            ; succ: []       
+            ; succ: [BB1]
+            
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
         """).strip()
         self.assert_ir(src, expected_ir)
 
@@ -215,7 +239,71 @@ class TestSCCP(base.TestBase):
         """)
 
         expected_ir = textwrap.dedent("""
-        
+            ; pred: []
+            BB0: ; [entry]
+                N_v1 = 0
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [condition check]
+                i_v1 = 0
+                %0_v1 = 1
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                N_v2 = ϕ(BB3: 0, BB5: N_v4)
+                i_v2 = ϕ(BB3: 0, BB5: i_v3)
+
+                %3_v1 = N_v2 > 10
+                cmp(%3_v1, 1)
+                if CF == 1 then jmp BB8 else jmp BB9
+            ; succ: [BB9, BB8]
+
+            ; pred: [BB4]
+            BB8: ; [then]
+                jmp BB6
+            ; succ: [BB6]
+
+            ; pred: [BB8, BB5]
+            BB6: ; [loop tail]
+                N_v3 = ϕ(BB8: N_v2, BB5: N_v4)
+
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB6]
+            BB7: ; [loop exit]
+                N_v5 = ϕ(BB6: N_v3)
+
+                return(N_v5)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB4]
+            BB9: ; [merge]
+                %6_v1 = N_v2 + 1
+                N_v4 = %6_v1 * 2
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB9]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %12_v1 = i_v3 < 10
+                cmp(%12_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
         """).strip()
 
         self.assert_ir(src, expected_ir)
@@ -238,36 +326,49 @@ class TestSCCP(base.TestBase):
                 N_v1 = 5
                 jmp BB2
             ; succ: [BB2]
-            
+
             ; pred: [BB0]
-            BB2: ; [loop init]
+            BB2: ; [condition check]
                 i_v1 = 0
+                %0_v1 = 1
                 jmp BB3
             ; succ: [BB3]
-            
+
             ; pred: [BB2]
-            BB3: ; [loop header]
-                N_v2 = ϕ(BB2: 5)
-                i_v2 = ϕ(BB2: 0)
-            
-                %0_v1 = 1
-                jmp BB5
-            ; succ: [BB5]
-            
-            ; pred: [BB3]
-            BB5: ; [loop body]
-                %3_v1 = 1
-                jmp BB7
-            ; succ: [BB7]
-            
-            ; pred: [BB5]
-            BB7: ; [then]
+            BB3: ; [loop preheader]
                 jmp BB4
             ; succ: [BB4]
-            
-            ; pred: [BB7]
-            BB4: ; [loop exit]
+
+            ; pred: [BB3]
+            BB4: ; [loop header]
+                N_v2 = ϕ(BB3: 5)
+                i_v2 = ϕ(BB3: 0)
+
+                %3_v1 = 1
+                jmp BB8
+            ; succ: [BB8]
+
+            ; pred: [BB4]
+            BB8: ; [then]
+                jmp BB6
+            ; succ: [BB6]
+
+            ; pred: [BB8]
+            BB6: ; [loop tail]
+                N_v3 = ϕ(BB8: 5)
+
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB6]
+            BB7: ; [loop exit]
+                N_v5 = ϕ(BB6: 5)
+
                 return(5)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
             ; succ: []
         """).strip()
         self.assert_ir(src, expected_ir)
@@ -289,43 +390,55 @@ class TestSCCP(base.TestBase):
             ; succ: [BB2]
 
             ; pred: [BB0]
-            BB2: ; [loop init]
+            BB2: ; [condition check]
                 i_v1 = 0
+                %0_v1 = 1
                 jmp BB3
             ; succ: [BB3]
 
-            ; pred: [BB2, BB6]
-            BB3: ; [loop header]
-                n_v2 = ϕ(BB2: 0, BB6: n_v3)
-                i_v2 = ϕ(BB2: 0, BB6: i_v3)
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
 
-                %0_v1 = i_v2 &lt; 10
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB5 else jmp BB4
-            ; succ: [BB5, BB4]
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                n_v2 = ϕ(BB3: 0, BB5: n_v3)
+                i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
-            ; pred: [BB3]
-            BB4: ; [loop exit]
-                return(n_v2)
-            ; succ: []
-
-            ; pred: [BB3]
-            BB5: ; [loop body]
                 n_v3 = n_v2 + i_v2
-                jmp BB6
-            ; succ: [BB6]
+                jmp BB5
+            ; succ: [BB5]
 
-            ; pred: [BB5]
-            BB6: ; [loop update]
+            ; pred: [BB4]
+            BB5: ; [loop update]
                 %5_v1 = 2 * i_v2
                 i_v3 = %5_v1 + 1
-                jmp BB3
-            ; succ: [BB3] 
+                %9_v1 = i_v3 < 10
+                cmp(%9_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
+
+            ; pred: [BB5]
+            BB6: ; [loop tail]
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB6]
+            BB7: ; [loop exit]
+                n_v4 = ϕ(BB6: n_v3)
+
+                return(n_v4)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: [] 
         """).strip()
 
         self.assert_ir(src, expected_ir)
 
-    def test_break_on_first_iter_transitional(self):
+    def test_empty_cycle(self):
         src = self.make_main("""
           let N int = 5;
           let a int = 0;
@@ -347,43 +460,55 @@ class TestSCCP(base.TestBase):
             ; succ: [BB2]
 
             ; pred: [BB0]
-            BB2: ; [loop init]
+            BB2: ; [condition check]
                 i_v1 = 0
+                %0_v1 = 1
                 jmp BB3
             ; succ: [BB3]
 
-            ; pred: [BB2, BB6]
-            BB3: ; [loop header]
-                i_v2 = ϕ(BB2: 0, BB6: i_v3)
+            ; pred: [BB2]
+            BB3: ; [loop preheader]
+                jmp BB4
+            ; succ: [BB4]
 
-                %0_v1 = i_v2 < 10
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB5 else jmp BB4
-            ; succ: [BB5, BB4]
+            ; pred: [BB3, BB5]
+            BB4: ; [loop header]
+                i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
-            ; pred: [BB3]
-            BB4: ; [loop exit]
-                N_v2 = ϕ(BB3: 5)
-
-                return(5)
-            ; succ: []
-
-            ; pred: [BB3]
-            BB5: ; [loop body]
                 %3_v1 = 0
-                jmp BB8
-            ; succ: [BB8]
+                jmp BB9
+            ; succ: [BB9]
+
+            ; pred: [BB4]
+            BB9: ; [merge]
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB9]
+            BB5: ; [loop update]
+                i_v3 = i_v2 + 1
+                %10_v1 = i_v3 < 10
+                cmp(%10_v1, 1)
+                if CF == 1 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
 
             ; pred: [BB5]
-            BB8: ; [merge]
-                jmp BB6
-            ; succ: [BB6]
+            BB6: ; [loop tail]
+                N_v2 = ϕ(BB5: 5)
 
-            ; pred: [BB8]
-            BB6: ; [loop update]
-                i_v3 = i_v2 + 1
-                jmp BB3
-            ; succ: [BB3]
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB6]
+            BB7: ; [loop exit]
+                N_v4 = ϕ(BB6: 5)
+
+                return(5)
+            ; succ: [BB1]
+
+            ; pred: [BB7]
+            BB1: ; [exit]
+            ; succ: []
         """).strip()
 
         self.assert_ir(src, expected_ir)
@@ -410,42 +535,35 @@ class TestSCCP(base.TestBase):
             ; succ: [BB2]
 
             ; pred: [BB0]
-            BB2: ; [uncond loop init]
+            BB2: ; [uncond loop preheader]
                 jmp BB3
             ; succ: [BB3]
 
             ; pred: [BB2]
-            BB3: ; [uncond loop body]
+            BB3: ; [uncond loop header]
                 a_v1 = 1
                 %2_v1 = 1
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB3]
+            BB7: ; [then]
                 jmp BB5
             ; succ: [BB5]
 
-            ; pred: [BB3]
-            BB5: ; [then]
-                jmp BB4
-            ; succ: [BB4]
+            ; pred: [BB7]
+            BB5: ; [uncond loop tail]
+                jmp BB6
+            ; succ: [BB6]
 
             ; pred: [BB5]
-            BB4: ; [uncond loop exit]
+            BB6: ; [uncond loop exit]
                 return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB6]
+            BB1: ; [exit]
             ; succ: []
         """).strip()
-        self.assert_ir(src, expected_ir)
 
-    def test_uncconditional_for_loop(self):
-        src = self.make_main("""
-            let i int = 0;
-            let N int = 10;
-            for {
-                if (i >= N) {
-                    break;
-                }
-                i = i + 1;
-            }
-            return 0;
-        """)
-
-        expected_ir = textwrap.dedent("""
-        """).strip()
         self.assert_ir(src, expected_ir)

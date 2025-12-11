@@ -83,10 +83,9 @@ class SCCP:
         self.cfg = cfg
         self._build_metadata(cfg)
 
-        # Initialization: entry block is executable
         self._mark_block_executable(cfg.entry)
+        self.executable_blocks.add(cfg.exit)
 
-        # Propagation loop
         while self.block_worklist or self.var_worklist:
             while self.block_worklist:
                 bb = self.block_worklist.popleft()
@@ -96,7 +95,6 @@ class SCCP:
                 var_key = self.var_worklist.popleft()
                 self._process_variable_users(var_key)
 
-        # Rewrite CFG and fold constants
         self._rewrite_cfg()
         self._fold_constants()
 

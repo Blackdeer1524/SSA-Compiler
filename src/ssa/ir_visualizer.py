@@ -60,7 +60,7 @@ def ir_to_graphviz(ir: str, name: str = "IR") -> str:
         graph_lines.append(f'"{label}" [label=<{html_label}>]')
 
     for src, dst in edges:
-        graph_lines.append(f'"{src}" -> "{dst}" [headport="n", tailport="s", penwidth=3, color="{bb_colors[dst]};0.5:{bb_colors[src]}"]')
+        graph_lines.append(f'"{src}" -> "{dst}" [headport="w", tailport="e", penwidth=3, color="{bb_colors[dst]};0.5:{bb_colors[src]}"]')
 
 
     return "\n".join(graph_lines)

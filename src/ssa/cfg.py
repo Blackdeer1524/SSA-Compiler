@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
 import re
-from typing import Iterable, Iterator, Optional, Sequence
+from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
     Function,
@@ -30,7 +30,7 @@ from src.parsing.parser import (
     LValueArrayAccess,
 )
 from src.parsing.semantic import SymbolTable, Type
-from src.ssa.helpers import color_label, unwrap
+from src.ssa.helpers import bb_colors, color_label, unwrap
 
 
 @dataclass
@@ -40,11 +40,24 @@ class SSAValue(ABC): ...
 @dataclass
 class SSAVariable(SSAValue):
     name: str
-    base_pointer: Optional[str] = field(default=None)
+    base_pointer: Optional[tuple[str, int]] = field(default=None)
     version: int | None = field(default=None)
 
     def __repr__(self):
-        return self.name if self.version is None else f"{self.name}_v{self.version}"
+        res = ""
+        if self.base_pointer is not None:
+            if (
+                self.base_pointer[0] == self.name
+                and self.base_pointer[1] == self.version
+            ):
+                res += "(<~)"
+            else:
+                res += f"({self.base_pointer[0]}_v{self.base_pointer[1]}<~)"
+
+        res += self.name
+        if self.version is not None:
+            res += f"_v{self.version}"
+        return res
 
 
 @dataclass
@@ -83,7 +96,7 @@ class OpLoad(Operation):
     addr: "SSAVariable"
 
     def __repr__(self):
-        return f"*({self.addr})"
+        return f"Load({self.addr})"
 
 
 @dataclass
@@ -168,7 +181,7 @@ class InstStore(Instruction):
     value: SSAValue
 
     def to_IR(self):
-        return f"*({self.dst_address}) = {self.value}"
+        return f"Store({self.dst_address}, {self.value})"
 
 
 @dataclass(eq=False)
@@ -196,9 +209,7 @@ class BasicBlock:
 
     def insert_phi(self, name: str):
         if self.phi_nodes.get(name) is None:
-            type_info = self.symbol_table.lookup_variable(name)
-            assert type_info is not None
-            self.phi_nodes[name] = InstPhi(SSAVariable(name, type_info.is_array()), {})
+            self.phi_nodes[name] = InstPhi(SSAVariable(name), {})
 
     def append(self, inst: Instruction):
         self.instructions.append(inst)
@@ -222,6 +233,9 @@ class BasicBlock:
         return self.label
 
     def to_IR(self) -> str:
+        self.symbol_table
+        
+        
         res = ""
         res += f"; pred: {self.preds}\n"
         res += self.label + ":"
@@ -293,6 +307,8 @@ class CFG:
         q = deque([(0, self.entry)])
         while len(q) > 0:
             (depth, bb) = q.popleft()
+            if bb in visited_blocks:
+                continue
             visited_blocks.add(bb)
             yield (depth, bb)
             q.extend(((depth + 1, s) for s in bb.succ if s not in visited_blocks))
@@ -302,6 +318,8 @@ class CFG:
         q = [self.entry]
         while len(q) > 0:
             n = q.pop()
+            if n in visited_blocks:
+                continue
             visited_blocks.add(n)
             yield n
             q.extend((s for s in n.succ if s not in visited_blocks))
@@ -312,6 +330,7 @@ class CFG:
         dominance_frontier: dict["BasicBlock", set["BasicBlock"]],
     ):
         res = f"digraph {self.name} {{\n"
+        res += "rankdir = LR;\n"
         res += "node [shape=box]\n"
 
         for bb in self:
@@ -322,8 +341,8 @@ class CFG:
             for succ in bb.succ:
                 res += (
                     f'"{bb.label}" -> "{succ.label}" '
-                    + '[headport="n", tailport="s", penwidth=3, '
-                    + 'color="{bb_colors[succ.label]};0.5:{bb_colors[bb.label]}"]\n'
+                    + '[headport="w", tailport="e", penwidth=3, '
+                    + f'color="{bb_colors[succ.label]};0.5:{bb_colors[bb.label]}"]\n'
                 )
 
         for parent, children in reversed_idom_tree.items():
@@ -419,6 +438,8 @@ class CFGBuilder:
         self.current_cfg = cfg
         self.cur_block = entry
 
+        for i, arg in enumerate(func.args):
+            self.cur_block.append(InstGetArgument(SSAVariable(arg.name), i))
         self._build_block(func.body)
 
         if not self.cur_block.succ:
@@ -426,8 +447,10 @@ class CFGBuilder:
 
         return cfg
 
-    def _build_block(self, block: Block):
-        for stmt in block.statements:
+    def _build_block(self, syntax_block: Block):
+        assert self.cur_block is not None
+
+        for stmt in syntax_block.statements:
             self._build_statement(stmt)
 
     def _build_statement(self, stmt: Statement):
@@ -451,65 +474,72 @@ class CFGBuilder:
             case Continue():
                 self._build_continue(stmt)
             case Block():
+                assert self.cur_block is not None
+
+                old_sym_table = self.cur_block.symbol_table
+
+                bb = self._new_block(unwrap(stmt.symbol_table))
+                self.cur_block.instructions.append(InstUncondJump(bb))
+                self.cur_block.add_child(bb)
+                self._switch_to_block(bb)
+
                 self._build_block(stmt)
+
+                after_block = self._new_block(old_sym_table)
+                self.cur_block.instructions.append(InstUncondJump(after_block))
+                self.cur_block.add_child(after_block)
+                self._switch_to_block(after_block)
 
     def _build_assignment(self, stmt: Assignment):
         assert self.cur_block is not None, "Current block must be set"
 
         type_info = unwrap(self.cur_block.symbol_table.lookup_variable(stmt.name))
         if isinstance(stmt.value, ArrayInit):
-            lhs_var = SSAVariable(stmt.name, True)
+            lhs_var = SSAVariable(stmt.name)
             self.cur_block.append(InstArrayInit(lhs_var, type_info.dimensions))
             return
 
         subexpr_ssa_val = self._build_subexpression(stmt.value, stmt.name)
-        if not isinstance(subexpr_ssa_val, SSAVariable):
-            lhs = SSAVariable(stmt.name, type_info.is_array())
+        if (
+            not isinstance(subexpr_ssa_val, SSAVariable)
+            or subexpr_ssa_val.name != stmt.name
+        ):
+            lhs = SSAVariable(stmt.name)
             self.cur_block.append(InstAssign(lhs, subexpr_ssa_val))
 
     def _build_subexpression(self, expr: Expression, name: str) -> SSAValue:
         assert self.cur_block is not None, "Current block must be set"
-
-        def is_pointer(it: Iterable[SSAValue]) -> bool:
-            for item in it:
-                if not isinstance(item, SSAVariable):
-                    continue
-                if item.is_pointer:
-                    return True
-            return False
 
         match expr:
             case BinaryOp(op, left, right):
                 left_val = self._build_subexpression(left, self._get_tmp_var())
                 right_val = self._build_subexpression(right, self._get_tmp_var())
 
-                lhs = SSAVariable(name, is_pointer([left_val, right_val]))
+                lhs = SSAVariable(name)
                 self.cur_block.append(
                     InstAssign(lhs, OpBinary(op, left_val, right_val))
                 )
                 return lhs
             case UnaryOp(op, operand):
                 subexpr_val = self._build_subexpression(operand, self._get_tmp_var())
-                lhs = SSAVariable(name, is_pointer([subexpr_val]))
+                lhs = SSAVariable(name)
                 self.cur_block.append(InstAssign(lhs, OpUnary(op, subexpr_val)))
                 return lhs
             case Identifier(ident_name):
-                type_info = self.cur_block.symbol_table.lookup_variable(ident_name)
-                assert type_info is not None
-                return SSAVariable(ident_name, type_info.is_array())
+                return SSAVariable(ident_name)
             case IntegerLiteral(value):
                 return SSAConstant(value)
             case CallExpression(func_name, args):
                 args = [
                     self._build_subexpression(arg, self._get_tmp_var()) for arg in args
                 ]
-                lhs = SSAVariable(name, is_pointer(args))
+                lhs = SSAVariable(name)
                 self.cur_block.append(InstAssign(lhs, OpCall(func_name, args)))
                 return lhs
             case ArrayAccess():
                 return self._build_array_access(expr, name)
             case ArrayInit():
-                return SSAVariable(name, True)
+                return SSAVariable(name)
             case _:
                 raise ValueError(f"Unknown expression type: {type(expr).__name__}")
 
@@ -517,20 +547,12 @@ class CFGBuilder:
         """Build array access with pointer arithmetic and dereference."""
         assert self.cur_block is not None, "Current block must be set"
 
-        # Get the base variable
         base_val = self._build_subexpression(expr.base, self._get_tmp_var())
 
-        # Look up the array type
-        if isinstance(expr.base, Identifier):
-            array_type = self._lookup_variable_type(expr.base.name)
-            if not array_type or not array_type.is_array():
-                raise ValueError(f"Array access on non-array variable {expr.base.name}")
-        else:
-            # For nested array access, we'd need to compute the type recursively
-            # For now, assume it's an array access
-            raise ValueError("Nested array access not yet fully supported")
+        assert isinstance(expr.base, Identifier)
+        array_type = unwrap(self._lookup_variable_type(expr.base.name))
+        assert array_type.is_array()
 
-        # Compute strides
         dimensions = array_type.dimensions
         strides = []
         for i in range(len(dimensions)):
@@ -540,34 +562,36 @@ class CFGBuilder:
                 stride *= dimensions[j]
             strides.append(stride)
 
-        # Build pointer arithmetic: base + stride_0*idx_0 + stride_1*idx_1 + ...
-        # Start with base address
-        current_addr = base_val
+        current_addr: Optional[SSAVariable] = None
 
-        # For each index, compute stride * index and add to address
         for i, index_expr in enumerate(expr.indices):
-            # Evaluate index expression
             index_val = self._build_subexpression(index_expr, self._get_tmp_var())
 
-            # Multiply by stride
             stride_const = SSAConstant(strides[i])
-            stride_tmp = SSAVariable(self._get_tmp_var(), False)
+            stride_tmp = SSAVariable(self._get_tmp_var())
+            stride_op = OpBinary("*", index_val, stride_const)
+            self.cur_block.append(InstAssign(stride_tmp, stride_op))
 
-            self.cur_block.append(
-                InstAssign(stride_tmp, OpBinary("*", index_val, stride_const))
-            )
+            if current_addr is None:
+                current_addr = stride_tmp
+            else:
+                addr_tmp = SSAVariable(self._get_tmp_var())
+                op = OpBinary("+", current_addr, stride_tmp)
+                self.cur_block.append(InstAssign(addr_tmp, op))
+                current_addr = addr_tmp
 
-            # Add to current address
-            addr_tmp = SSAVariable(self._get_tmp_var(), True)
-            self.cur_block.append(
-                InstAssign(addr_tmp, OpBinary("+", current_addr, stride_tmp))
-            )
+        if current_addr is None:
+            addr_tmp = SSAVariable(self._get_tmp_var())
+            self.cur_block.append(InstAssign(addr_tmp, base_val))
+            current_addr = addr_tmp
+        else:
+            addr_tmp = SSAVariable(self._get_tmp_var())
+            op = OpBinary("+", base_val, current_addr)
+            self.cur_block.append(InstAssign(addr_tmp, op))
             current_addr = addr_tmp
 
-        # Dereference the final address
         assert isinstance(current_addr, SSAVariable)
-
-        lhs = SSAVariable(name, True)
+        lhs = SSAVariable(name)
         self.cur_block.append(InstAssign(lhs, OpLoad(current_addr)))
         return lhs
 
@@ -583,10 +607,7 @@ class CFGBuilder:
         )
         subexpr_ssa_val = self._build_subexpression(stmt.value, stmt.lvalue.name)
         if not isinstance(subexpr_ssa_val, SSAVariable):
-            type_info = self.cur_block.symbol_table.lookup_variable(stmt.lvalue.name)
-            assert type_info is not None
-
-            lhs = SSAVariable(stmt.lvalue.name, type_info.is_array())
+            lhs = SSAVariable(stmt.lvalue.name)
             self.cur_block.append(InstAssign(lhs, subexpr_ssa_val))
 
     def _build_array_element_assignment(
@@ -595,14 +616,9 @@ class CFGBuilder:
         """Build array element assignment: arr[i][j] = value."""
         assert self.cur_block is not None, "Current block must be set"
 
-        # Look up the array type
-        array_type = self._lookup_variable_type(lvalue.base)
-        if not array_type or not array_type.is_array():
-            raise ValueError(
-                f"Array element assignment on non-array variable {lvalue.base}"
-            )
+        array_type = unwrap(self._lookup_variable_type(lvalue.base))
+        assert array_type.is_array()
 
-        # Compute strides
         dimensions = array_type.dimensions
         strides = []
         for i in range(len(dimensions)):
@@ -612,42 +628,42 @@ class CFGBuilder:
                 stride *= dimensions[j]
             strides.append(stride)
 
-        # Get the base array variable
-        base_val = SSAVariable(lvalue.base, True)
+        base_val = SSAVariable(lvalue.base)
+        current_addr: Optional[SSAVariable] = None
 
-        # Build pointer arithmetic: base + stride_0*idx_0 + stride_1*idx_1 + ...
-        current_addr = base_val
-
-        # For each index, compute stride * index and add to address
         for i, index_expr in enumerate(lvalue.indices):
-            # Evaluate index expression
             index_val = self._build_subexpression(index_expr, self._get_tmp_var())
 
-            # Multiply by stride
             stride_const = SSAConstant(strides[i])
-            stride_tmp = SSAVariable(self._get_tmp_var(), False)
-            self.cur_block.append(
-                InstAssign(stride_tmp, OpBinary("*", index_val, stride_const))
-            )
+            stride_tmp = SSAVariable(self._get_tmp_var())
+            stride_op = OpBinary("*", index_val, stride_const)
+            self.cur_block.append(InstAssign(stride_tmp, stride_op))
 
-            # Add to current address
-            addr_tmp = SSAVariable(self._get_tmp_var(), True)
-            self.cur_block.append(
-                InstAssign(addr_tmp, OpBinary("+", current_addr, stride_tmp))
-            )
+            if current_addr is None:
+                current_addr = stride_tmp
+            else:
+                addr_tmp = SSAVariable(self._get_tmp_var())
+                op = OpBinary("+", current_addr, stride_tmp)
+                self.cur_block.append(InstAssign(addr_tmp, op))
+                current_addr = addr_tmp
+
+        if current_addr is None:
+            addr_tmp = SSAVariable(self._get_tmp_var())
+            self.cur_block.append(InstAssign(addr_tmp, base_val))
+            current_addr = addr_tmp
+        else:
+            addr_tmp = SSAVariable(self._get_tmp_var())
+            op = OpBinary("+", base_val, current_addr)
+            self.cur_block.append(InstAssign(addr_tmp, op))
             current_addr = addr_tmp
 
-        # Evaluate the value to assign
         value_tmp = self._get_tmp_var()
         value_val = self._build_subexpression(value, value_tmp)
-
-        # Store the value at the computed address
-        # Note: current_addr is already an SSAValue (could be SSAVariable or SSAConstant)
         self.cur_block.append(InstStore(current_addr, value_val))
 
     def _build_function_call(self, stmt: FunctionCall):
         assert self.cur_block is not None, "Current block must be set"
-        tmp = SSAVariable(self._get_tmp_var(), False)
+        tmp = SSAVariable(self._get_tmp_var())
         args = [
             self._build_subexpression(arg, self._get_tmp_var()) for arg in stmt.args
         ]
@@ -703,6 +719,8 @@ class CFGBuilder:
         preheader_block = self._new_block(body_st, "loop preheader")
         header_block = self._new_block(body_st, "loop header")
         update_block = self._new_block(body_st, "loop update")
+
+        # required for an easier loop detection in LICM : all tail's predecessors are guaranteed to be loop blocks
         tail_block = self._new_block(body_st, "loop tail")
         exit_block = self._new_block(self.cur_block.symbol_table, "loop exit")
 
@@ -753,44 +771,42 @@ class CFGBuilder:
 
     def _build_unconditional_loop(self, stmt: UnconditionalLoop):
         assert self.cur_block is not None, "Current block must be set"
-        raise NotImplementedError("not implemented")
 
-        preheader_block = self._new_block("uncond loop preheader")
-        header_block = self._new_block("uncond loop header")
-        exit_block = self._new_block("uncond loop exit")
+        body_st = unwrap(stmt.body.symbol_table)
+        preheader_block = self._new_block(body_st, "uncond loop preheader")
+        header_block = self._new_block(body_st, "uncond loop header")
+        update_block = self._new_block(body_st, "uncond loop update")
+        tail_block = self._new_block(body_st, "uncond loop tail")
+        exit_block = self._new_block(self.cur_block.symbol_table, "uncond loop exit")
 
-        body_block = self._new_block("uncond loop body")
-        tail_block = self._new_block("uncond loop tail")
-
-        self.break_targets.append(exit_block)
-        self.continue_targets.append(tail_block)
-
-        self.cur_block.add_child(preheader_block)
         self.cur_block.append(InstUncondJump(preheader_block))
-
+        self.cur_block.add_child(preheader_block)
         self._switch_to_block(preheader_block)
-        self.cur_block.add_child(header_block)
+
         self.cur_block.append(InstUncondJump(header_block))
-
+        self.cur_block.add_child(header_block)
         self._switch_to_block(header_block)
-        self.cur_block.add_child(body_block)
-        self.cur_block.append(InstUncondJump(body_block))
 
-        self._switch_to_block(body_block)
+        self.break_targets.append(tail_block)
+        self.continue_targets.append(update_block)
         self._build_block(stmt.body)
+        self.break_targets.pop()
+        self.continue_targets.pop()
 
         if len(self.cur_block.instructions) == 0 or not isinstance(
             self.cur_block.instructions[-1], (InstUncondJump, InstCmp, InstReturn)
         ):
-            self.cur_block.add_child(tail_block)
-            self.cur_block.append(InstUncondJump(tail_block))
+            self.cur_block.add_child(update_block)
+            self.cur_block.append(InstUncondJump(update_block))
+
+        self._switch_to_block(update_block)
+        self.cur_block.append(InstUncondJump(header_block))
+        self.cur_block.add_child(header_block)
 
         self._switch_to_block(tail_block)
-        self.cur_block.add_child(header_block)
-        self.cur_block.append(InstUncondJump(header_block))
+        self.cur_block.append(InstUncondJump(exit_block))
+        self.cur_block.add_child(exit_block)
 
-        self.break_targets.pop()
-        self.continue_targets.pop()
         self._switch_to_block(exit_block)
 
     def _build_return(self, stmt: Return):
@@ -808,7 +824,7 @@ class CFGBuilder:
             self._new_block(self.cur_block.symbol_table, "after return")
         )
 
-    def _build_break(self, stmt: Break):
+    def _build_break(self, _: Break):
         assert self.cur_block is not None, "Current block must be set"
 
         assert self.break_targets
@@ -817,7 +833,7 @@ class CFGBuilder:
             self.cur_block.add_child(target)
             self.cur_block.append(InstUncondJump(target))
 
-    def _build_continue(self, stmt: Continue):
+    def _build_continue(self, _: Continue):
         assert self.cur_block is not None, "Current block must be set"
 
         if self.continue_targets:

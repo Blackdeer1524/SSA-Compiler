@@ -9,9 +9,9 @@ def color_label(l: str) -> str:
     if bb_colors.get(l) is None:
         h = sha256(l.encode()).hexdigest()
 
-        r = h[0:2]
-        g = h[2:4]
-        b = h[4:6]
+        r = h[-2:]
+        g = h[0:2]
+        b = h[-4:-2]
 
         if len(r) == 1:
             r = "0" + r
