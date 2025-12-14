@@ -801,6 +801,8 @@ class TestDCE(base.TestBase):
 
         self.assert_ir(src, expected_ir)
 
+    
+
     def test_loop_array_write(self):
         src = """
         func main() -> int {

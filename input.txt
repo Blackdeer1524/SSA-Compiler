@@ -1,20 +1,3 @@
-func _main() -> int {
-    let v int = 0;
-    let N int = 0;
-    for (let i int = 0; i < 10; i = i + 1) {
-        v = 2;  // should be hoisted
-        if (N == 0) {
-            break;
-        }
-        v = 4;  // shouldn't be hoisted
-    }
-    return v;
-}
-
-func _foo() -> int {
-    return -42;
-}        
-
 func gauss_solve(A [64][64]int, b [64]int, x [64]int) -> int {
     for (let i int = 0; i < 64; i = i + 1) {
         let pivot int = A[i][i];
@@ -62,6 +45,25 @@ func gauss_solve(A [64][64]int, b [64]int, x [64]int) -> int {
     }
     return 0;
 }
+
+
+func _main() -> int {
+    let v int = 0;
+    let N int = 0;
+    for (let i int = 0; i < 10; i = i + 1) {
+        v = 2;  // should be hoisted
+        if (N == 0) {
+            break;
+        }
+        v = 4;  // shouldn't be hoisted
+    }
+    return v;
+}
+
+func _foo() -> int {
+    return -42;
+}        
+
 
 
 func mat_vec_mul(mat [64][64]int, vec [64]int, result [64]int) -> void {

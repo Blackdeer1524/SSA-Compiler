@@ -264,7 +264,7 @@ class Parser:
         return args
 
     def parse_arg(self) -> Argument:
-        """ARG ::= %name% %type%"""
+        """ARG ::= IDENTIFIER TYPE"""
         name_token = self.expect(TokenType.IDENTIFIER)
         name = name_token.value
 
@@ -273,7 +273,7 @@ class Parser:
         return Argument(name, arg_type)
 
     def parse_type(self) -> str:
-        """TYPE ::= int | ("[" %integer% "]")+ int | void"""
+        """TYPE ::= int | ("[" INTEGER "]")+ int | void"""
         # Parse array dimensions
         dimensions = []
         while self.check(TokenType.LBRACKET):
@@ -390,7 +390,7 @@ class Parser:
         raise ParseError(f"Unexpected token: {token.type.name}", token)
 
     def parse_assignment(self) -> Assignment:
-        """ASSIGNMENT ::= "let" %name% %type% "=" EXPR ";" """
+        """ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" EXPR ";" """
         self.expect(TokenType.LET)  # consume "let"
 
         name_token = self.expect(TokenType.IDENTIFIER)
@@ -405,9 +405,7 @@ class Parser:
         # Check for array initialization: {}
         if self.check(TokenType.LBRACE):
             self.advance()  # consume '{'
-            self.expect(TokenType.RBRACE)  # consume '}'
-            value = ArrayInit()
-        else:
+            self.expect(TokenType.RBRACE)  # consume '}' value = ArrayInit() else:
             value = self.parse_expr()
 
         self.expect(TokenType.SEMICOLON)
@@ -428,7 +426,7 @@ class Parser:
         return Reassignment(lvalue, value, line, column)
 
     def parse_lvalue(self) -> "LValue":
-        """EXPR_LVALUE ::= %name% ("[" EXPR "]")*"""
+        """EXPR_LVALUE ::= IDENTIFIER ("[" EXPR "]")*"""
         name_token = self.expect(TokenType.IDENTIFIER)
         base_name = name_token.value
         line = name_token.line
@@ -491,7 +489,7 @@ class Parser:
         return ForLoop(init, condition, update, body, line, column)
 
     def parse_function_call(self) -> FunctionCall:
-        """FUNCTION_CALL ::= %name% "(" EXPR_LIST ")" """
+        """FUNCTION_CALL ::= IDENTIFIER "(" EXPR_LIST ")" """
         name_token = self.expect(TokenType.IDENTIFIER)
         name = name_token.value
         line = name_token.line
@@ -634,7 +632,7 @@ class Parser:
             return self.parse_expr_atom()
 
     def parse_expr_atom(self) -> Expression:
-        """EXPR_ATOM ::= %name% ("[" EXPR "]")* | %integer% | "(" EXPR ")" | FUNCTION_CALL"""
+        """EXPR_ATOM ::= IDENTIFIER ("[" EXPR "]")* | INTEGER | "(" EXPR ")" | FUNCTION_CALL"""
         if self.check(TokenType.INTEGER):
             token = self.expect(TokenType.INTEGER)
             return IntegerLiteral(int(token.value))

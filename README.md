@@ -47,11 +47,11 @@ func main() -> void {
 ```
 PROGRAMM ::= FUNCTION+
 
-FUNCTION ::= func %name% "(" ARG_LIST ")" "->" TYPE "{" BLOCK "}"
+FUNCTION ::= func IDENTIFIER "(" ARG_LIST ")" "->" TYPE "{" BLOCK "}"
 
 ARG_LIST ::= EPSILON | ARG ("," ARG)*
 
-ARG ::= %name% TYPE
+ARG ::= IDENTIFIER TYPE
 
 BLOCK ::= "{" STATEMENTS "}"
 
@@ -68,11 +68,11 @@ STATEMENT ::=
     | CONTINUE ";"
     | BLOCK
 
-ASSIGNMENT ::= "let" %name% TYPE "=" (EXPR | "{}") ";"
+ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" (EXPR | "{}") ";"
 
 REASSIGNMENT ::= EXPR_LVALUE "=" EXPR ";"
 
-EXPR_LVALUE ::= %name% ("[" EXPR "]")*
+EXPR_LVALUE ::= IDENTIFIER ("[" EXPR "]")*
 
 CONDITION ::= if "(" EXPR ")" BLOCK [else BLOCK]
 
@@ -80,7 +80,7 @@ LOOP ::=
     for BLOCK
     | for "(" ASSIGNMENT ";" EXPR ";" REASSIGNMENT ")" BLOCK
 
-FUNCTION_CALL ::= %name% "(" EXPR_LIST ")"
+FUNCTION_CALL ::= IDENTIFIER "(" EXPR_LIST ")"
 
 EXPR_LIST ::= EPSILON | EXPR ("," EXPR)*
 
@@ -108,8 +108,8 @@ EXPR_UNARY ::=
     | "!" EXPR_UNARY
 
 EXPR_ATOM ::=
-    %name% ("[" EXPR "]")*
-    | %integer%
+    IDENTIFIER ("[" EXPR "]")*
+    | INTEGER
     | "(" EXPR ")"
     | FUNCTION_CALL
 ```
