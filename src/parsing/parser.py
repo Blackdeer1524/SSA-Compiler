@@ -229,12 +229,18 @@ class Parser:
     # Grammar rules implementation
 
     def parse(self) -> Program:
+        """
+        PROGRAMM ::= FUNCTION+ EOF
+        """
         functions = []
         while self.current_token and self.current_token.type != TokenType.EOF:
             functions.append(self.parse_function())
         return Program(functions)
 
     def parse_function(self) -> Function:
+        """
+        FUNCTION ::= "func" IDENTIFIER "(" ARG_LIST ")" "->" TYPE BLOCK
+        """
         self.expect(TokenType.FUNC)
 
         name_token = self.expect(TokenType.IDENTIFIER)
@@ -405,8 +411,8 @@ class Parser:
         # Check for array initialization: {}
         if self.check(TokenType.LBRACE):
             self.advance()  # consume '{'
-            self.expect(TokenType.RBRACE)  # consume '}' 
-            value = ArrayInit() 
+            self.expect(TokenType.RBRACE)  # consume '}'
+            value = ArrayInit()
         else:
             value = self.parse_expr()
 

@@ -234,8 +234,7 @@ class BasicBlock:
 
     def to_IR(self) -> str:
         self.symbol_table
-        
-        
+
         res = ""
         res += f"; pred: {self.preds}\n"
         res += self.label + ":"

@@ -57,8 +57,6 @@ class BlockCleanup:
         # last_pred_inst = pred.instructions[-1]
         # match last_pred_inst:
         #     case ...
-            
-
 
         bb.preds.clear()
         bb.succ.clear()

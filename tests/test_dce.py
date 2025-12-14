@@ -801,8 +801,6 @@ class TestDCE(base.TestBase):
 
         self.assert_ir(src, expected_ir)
 
-    
-
     def test_loop_array_write(self):
         src = """
         func main() -> int {
@@ -994,6 +992,7 @@ class TestDCE(base.TestBase):
                     }
                 }
                 if (bar()) {
+                    a[7] = 12;  // dead
                     break;
                 }
             }
@@ -1009,6 +1008,116 @@ class TestDCE(base.TestBase):
         """
 
         expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                (<~)a_v1 = array_init([8])
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [uncond loop preheader]
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB2, BB4]
+            BB3: ; [uncond loop header]
+                jmp BB7
+            ; succ: [BB7]
+
+            ; pred: [BB3]
+            BB7:
+                jmp BB8
+            ; succ: [BB8]
+
+            ; pred: [BB7]
+            BB8:
+                %0_v1 = foo((<~)a_v1)
+                jmp BB9
+            ; succ: [BB9]
+
+            ; pred: [BB8]
+            BB9:
+                jmp BB10
+            ; succ: [BB10]
+
+            ; pred: [BB9]
+            BB10:
+                jmp BB11
+            ; succ: [BB11]
+
+            ; pred: [BB10]
+            BB11:
+                jmp BB12
+            ; succ: [BB12]
+
+            ; pred: [BB11]
+            BB12:
+                jmp BB13
+            ; succ: [BB13]
+
+            ; pred: [BB12]
+            BB13:
+                jmp BB14
+            ; succ: [BB14]
+
+            ; pred: [BB13]
+            BB14:
+                %3_v1 = 4 * 1
+                (a_v1<~)%4_v1 = (<~)a_v1 + %3_v1
+                Store((a_v1<~)%4_v1, 4)
+                jmp BB15
+            ; succ: [BB15]
+
+            ; pred: [BB14]
+            BB15:
+                jmp BB16
+            ; succ: [BB16]
+
+            ; pred: [BB15]
+            BB16:
+                jmp BB17
+            ; succ: [BB17]
+
+            ; pred: [BB16]
+            BB17:
+                jmp BB18
+            ; succ: [BB18]
+
+            ; pred: [BB17]
+            BB18:
+                %6_v1 = bar()
+                cmp(%6_v1, 1)
+                if CF == 1 then jmp BB19 else jmp BB20
+            ; succ: [BB20, BB19]
+
+            ; pred: [BB18]
+            BB19: ; [then]
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB19]
+            BB5: ; [uncond loop tail]
+                jmp BB6
+            ; succ: [BB6]
+
+            ; pred: [BB5]
+            BB6: ; [uncond loop exit]
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB6]
+            BB1: ; [exit]
+            ; succ: []
+
+            ; pred: [BB18]
+            BB20: ; [merge]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB20]
+            BB4: ; [uncond loop update]
+                jmp BB3
+            ; succ: [BB3]
         """).strip()
 
         self.assert_ir(src, expected_ir)

@@ -60,7 +60,9 @@ class TestBase(unittest.TestCase):
             .replace("<", "&lt;")
             .replace(">", "&gt;")
         )
-        expected_graph = ir_to_graphviz(expected_ir.replace("<", "&lt;").replace(">", "&gt;"))
+        expected_graph = ir_to_graphviz(
+            expected_ir.replace("<", "&lt;").replace(">", "&gt;")
+        )
         actual_graph = ir_to_graphviz(ir.replace("<", "&lt;").replace(">", "&gt;"))
         actual_graph = re.sub(r"(BB\d+)", r"\1'", actual_graph)
         no_opts_graph = ir_to_graphviz(no_opts_ir)

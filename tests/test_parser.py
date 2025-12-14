@@ -115,6 +115,7 @@ func bar() -> int { return 1; }"""
         reassign = ast.functions[0].body.statements[1]
         self.assertIsInstance(reassign, Reassignment)
         from src.parsing.parser import LValueIdentifier
+
         self.assertIsInstance(reassign.lvalue, LValueIdentifier)
         self.assertEqual(reassign.lvalue.name, "a")
         self.assertIsInstance(reassign.value, IntegerLiteral)
