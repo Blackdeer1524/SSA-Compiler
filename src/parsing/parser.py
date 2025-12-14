@@ -405,7 +405,9 @@ class Parser:
         # Check for array initialization: {}
         if self.check(TokenType.LBRACE):
             self.advance()  # consume '{'
-            self.expect(TokenType.RBRACE)  # consume '}' value = ArrayInit() else:
+            self.expect(TokenType.RBRACE)  # consume '}' 
+            value = ArrayInit() 
+        else:
             value = self.parse_expr()
 
         self.expect(TokenType.SEMICOLON)

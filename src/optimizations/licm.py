@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Optional, Iterable
+from typing import Optional, Iterable, override
 
+from src.optimizations.base import OptimizationPass
 from src.ssa.cfg import (
     CFG,
     BasicBlock,
@@ -30,13 +31,14 @@ class LoopInfo:
     exit_block: BasicBlock
 
 
-class LICM:
+class LICM(OptimizationPass):
     def __init__(self):
         self.cfg: Optional[CFG] = None
         self.dom_tree: Optional[DominatorTree] = None
         self.def_to_block: dict[tuple[str, int], BasicBlock] = {}
         self.uses: dict[tuple[str, int], set[tuple[str, int]]] = defaultdict(set)
 
+    @override
     def run(self, cfg: CFG):
         self.cfg = cfg
         self.dom_tree = compute_dominator_tree(cfg)

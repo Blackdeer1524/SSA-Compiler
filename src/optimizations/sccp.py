@@ -1,7 +1,8 @@
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Literal, Optional, Iterable
+from typing import Literal, Optional, Iterable, override
 
+from src.optimizations.base import OptimizationPass
 from src.ssa.cfg import (
     CFG,
     BasicBlock,
@@ -64,7 +65,7 @@ def join(a: LatticeValue, b: LatticeValue) -> LatticeValue:
     return a if a.value == b.value else LatticeValue.nac()
 
 
-class SCCP:
+class SCCP(OptimizationPass):
     def __init__(self):
         self.cfg: Optional[CFG] = None
 
@@ -79,6 +80,7 @@ class SCCP:
         self.defs: dict[tuple[str, int], Instruction | InstPhi] = {}
         self.inst_block: dict[Instruction | InstPhi, BasicBlock] = {}
 
+    @override
     def run(self, cfg: CFG):
         self.cfg = cfg
         self._build_metadata(cfg)

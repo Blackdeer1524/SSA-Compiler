@@ -1,6 +1,7 @@
 from collections import defaultdict, deque
-from typing import Iterable, Optional
+from typing import Iterable, Optional, override
 
+from src.optimizations.base import OptimizationPass
 from src.ssa.cfg import (
     CFG,
     BasicBlock,
@@ -24,7 +25,7 @@ from src.ssa.cfg import (
 from src.ssa.helpers import unwrap
 
 
-class DCE:
+class DCE(OptimizationPass):
     def __init__(self):
         self.cfg: Optional[CFG] = None
         # Def-use
@@ -35,6 +36,7 @@ class DCE:
         self.live_insts: set[Instruction | InstPhi] = set()
         self.live_vars: set[tuple[str, int]] = set()
 
+    @override
     def run(self, cfg: CFG):
         self.cfg = cfg
         self._build_metadata(cfg)
