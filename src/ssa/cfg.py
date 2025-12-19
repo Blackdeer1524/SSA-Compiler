@@ -301,7 +301,6 @@ class CFG:
     name: str
     entry: BasicBlock
     exit: BasicBlock
-    args: list["Argument"] = field(default_factory=list)  # Function arguments
 
     def bfs(self) -> Iterator[tuple[int, BasicBlock]]:
         visited_blocks = set()
@@ -409,8 +408,7 @@ class CFGBuilder:
         entry = self._new_block(func.body.symbol_table, "entry")
         exit_block = self._new_block(func.body.symbol_table, "exit")
 
-        cfg = CFG(func.name, entry=entry, exit=exit_block, args=func.args)
-        self.current_cfg = cfg
+        self.current_cfg = CFG(func.name, entry=entry, exit=exit_block)
         self.cur_block = entry
 
         for i, arg in enumerate(func.args):
@@ -420,7 +418,7 @@ class CFGBuilder:
         if not self.cur_block.succ:
             self.cur_block.add_child(exit_block)
 
-        return cfg
+        return self.current_cfg
 
     def _build_block(self, syntax_block: Block):
         assert self.cur_block is not None
