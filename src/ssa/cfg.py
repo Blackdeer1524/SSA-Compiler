@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
 import re
+import textwrap
 from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
@@ -326,11 +327,32 @@ class CFG:
 
     def to_graphviz(
         self,
+        src: str,
         reversed_idom_tree: dict[BasicBlock, list[BasicBlock]],
         dominance_frontier: dict["BasicBlock", set["BasicBlock"]],
     ):
         res = f"digraph {self.name} {{\n"
         res += "rankdir = TD;\n"
+
+        block_src_code = (
+            textwrap.dedent(src)
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\n", '<br ALIGN="left"/>')
+            + '<br ALIGN="left"/>'
+        )
+        source_block = f'"src" [label=<{block_src_code}>]'
+        res += f"""
+            subgraph cluster_source_code {{
+                node [shape=box]
+                label="Исходный код";
+            {source_block}
+            }}
+            
+            subgraph cluster_original {{
+                label="Граф потока управления";
+        """
+
         res += "node [shape=box]\n"
 
         for bb in self:
@@ -354,6 +376,7 @@ class CFG:
                 res += f'"{bb.label}" -> "{df.label}" [color=red]\n'
 
         res += "}"
+        res += "}"
         return res
 
     def to_IR(self) -> str:
@@ -371,8 +394,6 @@ class CFGBuilder:
         self.cur_block: Optional[BasicBlock] = None
         self.break_targets: list[BasicBlock] = []  # Stack of break targets
         self.continue_targets: list[BasicBlock] = []  # Stack of continue targets
-        self.program: Optional[Program] = None
-        self.current_function: Optional[Function] = None
 
     def _get_tmp_var(self) -> str:
         name = f"%{self.tmp_var_counter}"
@@ -391,7 +412,6 @@ class CFGBuilder:
         self.cur_block = bb
 
     def build(self, program: Program) -> list[CFG]:
-        self.program = program
         cfgs = []
         for func in program.functions:
             cfg = self._build_function(func)
@@ -399,10 +419,8 @@ class CFGBuilder:
         return cfgs
 
     def _build_function(self, func: Function) -> CFG:
-        self.block_counter = 0
         self.break_targets = []
         self.continue_targets = []
-        self.current_function = func
 
         assert func.body.symbol_table is not None
         entry = self._new_block(func.body.symbol_table, "entry")

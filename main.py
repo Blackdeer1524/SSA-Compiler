@@ -113,7 +113,7 @@ def main():
         else:
             df = compute_dominance_frontier_graph(cfg, idom_tree)
 
-        graphviz = cfg.to_graphviz(rev_idom, df)
+        graphviz = cfg.to_graphviz(src, rev_idom, df)
         if args.dump_cfg_dot:
             with open(args.dump_cfg_dot, "w") as f:
                 f.write(graphviz)
