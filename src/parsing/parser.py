@@ -65,9 +65,9 @@ class Condition(Statement):
 
 @dataclass
 class ForLoop(Statement):
-    init: Assignment
+    init: list[Assignment]
     condition: "Expression"
-    update: Reassignment
+    update: list[Reassignment]
     body: "Block"
 
 
@@ -298,7 +298,7 @@ class Parser:
         return statements
 
     def parse_statement(self) -> Statement:
-        """STATEMENT ::= ASSIGNMENT | REASSIGNMENT | CONDITION | LOOP | FUNCTION_CALL ";" | RETURN ";" | BLOCK"""
+        """STATEMENT ::= ASSIGNMENT ";" | REASSIGNMENT ";" | CONDITION | LOOP | FUNCTION_CALL ";" | RETURN ";" | BLOCK"""
         if not self.current_token:
             raise ParseError("Unexpected end of file")
 
@@ -320,7 +320,9 @@ class Parser:
             return self.parse_continue()
 
         if self.check(TokenType.LET):
-            return self.parse_assignment()
+            assignment = self.parse_assignment()
+            self.expect(TokenType.SEMICOLON)
+            return assignment
 
         if self.check(TokenType.IDENTIFIER):
             if self.pos + 1 < len(self.tokens):
@@ -331,7 +333,9 @@ class Parser:
                     self.expect(TokenType.SEMICOLON)
                     return call
                 elif next_token.type == TokenType.ASSIGN:
-                    return self.parse_reassignment()
+                    reassignment = self.parse_reassignment()
+                    self.expect(TokenType.SEMICOLON)
+                    return reassignment
                 elif next_token.type == TokenType.LBRACKET:
                     peek_pos = self.pos + 1
                     bracket_count = 0
@@ -354,13 +358,15 @@ class Parser:
                         peek_pos += 1
 
                     if found_assign:
-                        return self.parse_reassignment()
+                        reassignment = self.parse_reassignment()
+                        self.expect(TokenType.SEMICOLON)
+                        return reassignment
 
         raise ParseError(f"Unexpected token: {token.type.name}", token)
 
     def parse_assignment(self) -> Assignment:
-        """ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" EXPR ";" """
-        self.expect(TokenType.LET)  # consume "let"
+        """ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" EXPR"""
+        self.expect(TokenType.LET)
 
         name_token = self.expect(TokenType.IDENTIFIER)
         name = name_token.value
@@ -379,21 +385,16 @@ class Parser:
         else:
             value = self.parse_expr()
 
-        self.expect(TokenType.SEMICOLON)
-
         return Assignment(line, column, name, var_type, value)
 
-    def parse_reassignment(self, require_semicolon: bool = True) -> Reassignment:
-        """REASSIGNMENT ::= EXPR_LVALUE "=" EXPR [";"]"""
+    def parse_reassignment(self) -> Reassignment:
+        """REASSIGNMENT ::= EXPR_LVALUE "=" EXPR"""
         lvalue = self.parse_lvalue()
         line = lvalue.line if hasattr(lvalue, "line") else 0
         column = lvalue.column if hasattr(lvalue, "column") else 0
 
         self.expect(TokenType.ASSIGN)
         value = self.parse_expr()
-        if require_semicolon:
-            self.expect(TokenType.SEMICOLON)
-
         return Reassignment(line, column, lvalue, value)
 
     def parse_lvalue(self) -> "LValue":
@@ -436,7 +437,7 @@ class Parser:
         return Condition(line, column, condition, then_block, else_block)
 
     def parse_loop(self) -> Union["ForLoop", "UnconditionalLoop"]:
-        """LOOP ::= for BLOCK | for "(" ASSIGNMENT ";" EXPR ";" REASSIGNMENT ")" BLOCK"""
+        """LOOP ::= for BLOCK | for "(" ASSIGNMENT ("," ASSIGNMENT)* ";" EXPR ";" REASSIGNMENT ("," REASSIGNMENT)* ")" BLOCK"""
         for_token = self.expect(TokenType.FOR)
         line = for_token.line
         column = for_token.column
@@ -446,12 +447,19 @@ class Parser:
             return UnconditionalLoop(line, column, body)
 
         self.expect(TokenType.LPAREN)
-        init = self.parse_assignment()  # this already consumes the semicolon
+        init = [self.parse_assignment()]
+        while self.check(TokenType.COMMA):
+            self.advance()
+            init.append(self.parse_assignment())
+
+        self.expect(TokenType.SEMICOLON)
         condition = self.parse_expr()
         self.expect(TokenType.SEMICOLON)
-        update = self.parse_reassignment(
-            require_semicolon=False
-        )  # No semicolon in for loop
+
+        update = [self.parse_reassignment()]
+        while self.check(TokenType.COMMA):
+            self.advance()
+            update.append(self.parse_reassignment())
         self.expect(TokenType.RPAREN)
         body = self.parse_block()
 
@@ -503,7 +511,7 @@ class Parser:
         return Break(line, column)
 
     def parse_continue(self) -> Continue:
-        """CONTINUE ::= continue ;"""
+        """CONTINUE ::= continue ";" """
         continue_token = self.expect(TokenType.CONTINUE)
         line = continue_token.line
         column = continue_token.column

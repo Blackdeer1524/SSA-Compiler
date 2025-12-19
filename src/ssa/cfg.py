@@ -7,7 +7,6 @@ from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
     Function,
-    Argument,
     Statement,
     Assignment,
     Reassignment,
@@ -30,7 +29,7 @@ from src.parsing.parser import (
     LValueIdentifier,
     LValueArrayAccess,
 )
-from src.parsing.semantic import SymbolTable, Type
+from src.parsing.semantic import SymbolTable
 from src.ssa.helpers import bb_colors, color_label, unwrap
 
 
@@ -703,7 +702,8 @@ class CFGBuilder:
         self.cur_block.add_child(initial_cond_block)
         self._switch_to_block(initial_cond_block)
 
-        self._build_assignment(stmt.init)
+        for assignment in stmt.init:
+            self._build_assignment(assignment)
         cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
         self.cur_block.append(
             InstCmp(cond_var, SSAConstant(1), preheader_block, exit_block)
@@ -727,7 +727,8 @@ class CFGBuilder:
             self.cur_block.append(InstUncondJump(update_block))
 
         self._switch_to_block(update_block)
-        self._build_reassignment(stmt.update)
+        for reassignment in stmt.update:
+            self._build_reassignment(reassignment)
         cond_var2 = self._build_subexpression(stmt.condition, self._get_tmp_var())
         self.cur_block.append(
             InstCmp(cond_var2, SSAConstant(1), header_block, tail_block)

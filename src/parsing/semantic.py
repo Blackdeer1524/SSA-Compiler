@@ -363,14 +363,16 @@ class SemanticAnalyzer:
         self.current_scope = stmt.body.symbol_table
 
         self.loop_depth += 1
-        self._analyze_assignment(stmt.init)
+        for assignment in stmt.init:
+            self._analyze_assignment(assignment)
 
         cond_type = self._analyze_expression(stmt.condition)
         if cond_type != Type("int"):
             msg = f"Loop condition must be int, got {cond_type}"
             self.errors.append(SemanticError(msg, stmt.line, stmt.column))
 
-        self._analyze_reassignment(stmt.update)
+        for reassignment in stmt.update:
+            self._analyze_reassignment(reassignment)
 
         for s in stmt.body.statements:
             self._analyze_statement(s)
