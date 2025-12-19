@@ -580,7 +580,10 @@ class CFGBuilder:
             "Expected LValueIdentifier for simple reassignment"
         )
         subexpr_ssa_val = self._build_subexpression(stmt.value, stmt.lvalue.name)
-        if not isinstance(subexpr_ssa_val, SSAVariable):
+        if (
+            not isinstance(subexpr_ssa_val, SSAVariable)
+            or subexpr_ssa_val.name != stmt.lvalue.name
+        ):
             lhs = SSAVariable(stmt.lvalue.name)
             self.cur_block.append(InstAssign(lhs, subexpr_ssa_val))
 
@@ -652,13 +655,13 @@ class CFGBuilder:
         cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
         if stmt.else_block is None:
             self.cur_block.append(
-                InstCmp(cond_var, SSAConstant(1), then_block, merge_block)
+                InstCmp(cond_var, SSAConstant(0), merge_block, then_block)
             )
             self.cur_block.add_child(merge_block)
         else:
             else_block = self._new_block(unwrap(stmt.else_block.symbol_table), "else")
             self.cur_block.append(
-                InstCmp(cond_var, SSAConstant(1), then_block, else_block)
+                InstCmp(cond_var, SSAConstant(0), else_block, then_block)
             )
             self.cur_block.add_child(else_block)
 
@@ -667,7 +670,7 @@ class CFGBuilder:
             self._build_block(stmt.else_block)
 
             if len(self.cur_block.instructions) == 0 or not isinstance(
-                self.cur_block.instructions[-1], (InstUncondJump, InstCmp)
+                self.cur_block.instructions[-1], (InstUncondJump, InstCmp, InstReturn)
             ):
                 self.cur_block.add_child(merge_block)
                 self.cur_block.append(InstUncondJump(merge_block))
@@ -678,7 +681,7 @@ class CFGBuilder:
         self._build_block(stmt.then_block)
 
         if len(self.cur_block.instructions) == 0 or not isinstance(
-            self.cur_block.instructions[-1], (InstUncondJump, InstCmp)
+            self.cur_block.instructions[-1], (InstUncondJump, InstCmp, InstReturn)
         ):
             self.cur_block.add_child(merge_block)
             self.cur_block.append(InstUncondJump(merge_block))
@@ -706,7 +709,7 @@ class CFGBuilder:
             self._build_assignment(assignment)
         cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
         self.cur_block.append(
-            InstCmp(cond_var, SSAConstant(1), preheader_block, exit_block)
+            InstCmp(cond_var, SSAConstant(0), exit_block, preheader_block)
         )
         self.cur_block.add_child(preheader_block)
         self.cur_block.add_child(exit_block)
@@ -731,7 +734,7 @@ class CFGBuilder:
             self._build_reassignment(reassignment)
         cond_var2 = self._build_subexpression(stmt.condition, self._get_tmp_var())
         self.cur_block.append(
-            InstCmp(cond_var2, SSAConstant(1), body_block, tail_block)
+            InstCmp(cond_var2, SSAConstant(0), tail_block, body_block)
         )
         self.cur_block.add_child(body_block)
         self.cur_block.add_child(tail_block)

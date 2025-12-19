@@ -82,8 +82,8 @@ class TestEndToEnd(base.TestBase):
             BB11: ; [loop update]
                 j_v3 = j_v2 + 1
                 %23_v1 = j_v3 < 64
-                cmp(%23_v1, 1)
-                if CF == 1 then jmp BB10 else jmp BB12
+                cmp(%23_v1, 0)
+                if CF == 1 then jmp BB12 else jmp BB10
             ; succ: [BB10, BB12]
 
             ; pred: [BB11]
@@ -105,8 +105,8 @@ class TestEndToEnd(base.TestBase):
             BB5: ; [loop update]
                 i_v3 = i_v2 + 1
                 %32_v1 = i_v3 < 64
-                cmp(%32_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%32_v1, 0)
+                if CF == 1 then jmp BB6 else jmp BB4
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]

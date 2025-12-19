@@ -1,9 +1,10 @@
-func main() -> void {
-    for (let i int = 0, let j int = 0; 
-         i + j < 10; 
-         i = i + 1, j = j + 1) {
-    }
-}
+func main() -> int {
+            let a int = 0;
+            if (a > 0) {
+                a = 10;
+            }
+            return a;
+            }
 
 func foo() -> int {
     let a int = 0;

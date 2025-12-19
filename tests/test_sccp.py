@@ -167,8 +167,8 @@ class TestSCCP(base.TestBase):
             BB5: ; [loop update]
                 i_v3 = i_v2 + 1
                 %11_v1 = i_v3 < 10
-                cmp(%11_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%11_v1, 0)
+                if CF == 1 then jmp BB6 else jmp BB4
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
@@ -263,8 +263,8 @@ class TestSCCP(base.TestBase):
                 i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
                 %3_v1 = N_v2 > 10
-                cmp(%3_v1, 1)
-                if CF == 1 then jmp BB8 else jmp BB9
+                cmp(%3_v1, 0)
+                if CF == 1 then jmp BB9 else jmp BB8
             ; succ: [BB9, BB8]
 
             ; pred: [BB4]
@@ -301,8 +301,8 @@ class TestSCCP(base.TestBase):
             BB5: ; [loop update]
                 i_v3 = i_v2 + 1
                 %12_v1 = i_v3 < 10
-                cmp(%12_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%12_v1, 0)
+                if CF == 1 then jmp BB6 else jmp BB4
             ; succ: [BB4, BB6]
         """).strip()
 
@@ -415,8 +415,8 @@ class TestSCCP(base.TestBase):
                 %5_v1 = 2 * i_v2
                 i_v3 = %5_v1 + 1
                 %9_v1 = i_v3 < 10
-                cmp(%9_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%9_v1, 0)
+                if CF == 1 then jmp BB6 else jmp BB4
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
@@ -488,8 +488,8 @@ class TestSCCP(base.TestBase):
             BB5: ; [loop update]
                 i_v3 = i_v2 + 1
                 %10_v1 = i_v3 < 10
-                cmp(%10_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%10_v1, 0)
+                if CF == 1 then jmp BB6 else jmp BB4
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
