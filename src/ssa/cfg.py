@@ -256,7 +256,7 @@ class BasicBlock:
         res += f"; succ: {self.succ}"
         return res
 
-    def print_block(self):
+    def to_html(self):
         res = ""
         res += f'<font color="grey">; pred: {[color_label(bb.label) for bb in self.preds]}</font><br ALIGN="LEFT"/>'
         res += color_label(self.label) + ":"
@@ -291,7 +291,6 @@ class BasicBlock:
 
         res += f'<font color="grey">; succ: {[color_label(bb.label) for bb in self.succ]}</font>'
         res += '<br ALIGN="left"/>'
-
         return res
 
 
@@ -336,7 +335,7 @@ class CFG:
         res += "node [shape=box]\n"
 
         for bb in self:
-            bb_repr = bb.print_block().replace("\\l", '<br ALIGN="LEFT"/>')
+            bb_repr = bb.to_html().replace("\\l", '<br ALIGN="LEFT"/>')
             res += f'"{bb.label}" [label=<{bb_repr}>]\n'
 
         for bb in self:
@@ -471,7 +470,7 @@ class CFGBuilder:
         assert self.cur_block is not None, "Current block must be set"
 
         match expr:
-            case BinaryOp(op, left, right):
+            case BinaryOp(_, _, op, left, right):
                 left_val = self._build_subexpression(left, self._get_tmp_var())
                 right_val = self._build_subexpression(right, self._get_tmp_var())
 
@@ -480,16 +479,16 @@ class CFGBuilder:
                     InstAssign(lhs, OpBinary(op, left_val, right_val))
                 )
                 return lhs
-            case UnaryOp(op, operand):
+            case UnaryOp(_, _, op, operand):
                 subexpr_val = self._build_subexpression(operand, self._get_tmp_var())
                 lhs = SSAVariable(name)
                 self.cur_block.append(InstAssign(lhs, OpUnary(op, subexpr_val)))
                 return lhs
-            case Identifier(ident_name):
+            case Identifier(_, _, ident_name):
                 return SSAVariable(ident_name)
-            case IntegerLiteral(value):
+            case IntegerLiteral(_, _, value):
                 return SSAConstant(value)
-            case CallExpression(func_name, args):
+            case CallExpression(_, _, func_name, args):
                 args = [
                     self._build_subexpression(arg, self._get_tmp_var()) for arg in args
                 ]

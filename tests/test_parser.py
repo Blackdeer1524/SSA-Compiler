@@ -33,9 +33,8 @@ class TestParser(unittest.TestCase):
 
     def test_empty_program(self):
         """Test parsing empty program."""
-        # Empty program is valid (no functions)
-        ast = self.parse_source("")
-        self.assertEqual(len(ast.functions), 0)
+        # Empty program is not valid (no functions)
+        self.assertRaises(ParseError, lambda: self.parse_source(""))
 
     def test_simple_function_void(self):
         """Test parsing a simple void function."""

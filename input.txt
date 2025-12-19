@@ -1,0 +1,4 @@
+func foo() -> void {
+    let a [10]int = {};
+    let b int = a[1];
+}
