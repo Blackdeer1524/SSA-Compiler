@@ -754,3 +754,112 @@ class TestLICM(base.TestBase):
             ; succ: [BB7] 
         """).strip()
         self.assert_ir(src, expected_ir)
+
+    def test_tail_dominance_with_reassignment(self):
+        src = """
+            func main() -> int {
+                let v int = 0;
+                let a int = 0;
+                for {
+                    if (foo()) {
+                        v = 2;  // hoist
+                        break;
+                    }
+                    a = v + 2;
+                }
+                return v;
+            }
+            
+            func foo() -> int {
+                return 42;
+            }
+        """
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                v_v1 = 0
+                a_v1 = 0
+                jmp BB2
+            ; succ: [BB2]
+
+            ; pred: [BB0]
+            BB2: ; [uncond loop preheader]
+                v_v2 = 2
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB2, BB4]
+            BB3: ; [uncond loop body]
+                %0_v1 = foo()
+                cmp(%0_v1, 0)
+                if CF == 0 then jmp BB7 else jmp BB8
+            ; succ: [BB7, BB8]
+
+            ; pred: [BB3]
+            BB8: ; [merge]
+                a_v2 = v_v1 + 2
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB8]
+            BB4: ; [uncond loop latch]
+                jmp BB3
+            ; succ: [BB3]
+
+            ; pred: [BB3]
+            BB7: ; [then]
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB7]
+            BB5: ; [uncond loop tail]
+                jmp BB6
+            ; succ: [BB6]
+
+            ; pred: [BB5]
+            BB6: ; [uncond loop exit]
+                return(v_v2)
+            ; succ: [BB1]
+
+            ; pred: [BB6]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_use_dominance_with_reassignment(self):
+        src = """
+            func main() -> int {
+                let v int = 0;
+                let a int = 0;
+                for {
+                    if (foo()) {
+                        v = 2;
+                        if (bar()) {
+                            break;
+                        }
+                    }
+                    a = v + 2;
+                    print(a);
+                }
+                return v;
+            }
+            
+            func foo() -> int {
+                return 42;
+            }
+
+            func bar() -> int {
+                return -11;
+            }
+            
+            func print(x int) -> void {
+            }
+        """
+
+        expected_ir = textwrap.dedent("""
+        """).strip()
+
+        self.assert_ir(src, expected_ir)

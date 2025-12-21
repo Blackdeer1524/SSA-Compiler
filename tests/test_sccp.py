@@ -600,3 +600,38 @@ class TestSCCP(base.TestBase):
         """).strip()
 
         self.assert_ir(src, expected_ir)
+
+    def test_unary_ops(self):
+        src = self.make_main("""
+            let a int = 1 + (-2) - +3 + +10;
+            if (!(a >= 11)) {
+                return 12;
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                %3_v1 = -2
+                %1_v1 = -1
+                %5_v1 = 3
+                %0_v1 = -4
+                %7_v1 = 10
+                a_v1 = 6
+                %10_v1 = 0
+                %9_v1 = 1
+                jmp BB2
+            ; succ: [BB2]
+            
+            ; pred: [BB0]
+            BB2: ; [then]
+                return(12)
+            ; succ: [BB1]
+            
+            ; pred: [BB2]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)

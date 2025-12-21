@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import dataclass, field
 import re
 import textwrap
@@ -43,7 +42,7 @@ class SSAVariable(SSAValue):
     base_pointer: Optional[tuple[str, int]] = field(default=None, compare=False)
     version: int | None = field(default=None)
 
-    def __repr__(self):
+    def __str__(self):
         res = ""
         if self.base_pointer is not None:
             if (
@@ -79,8 +78,8 @@ class OpCall(Operation):
     name: str
     args: Sequence["SSAValue"]
 
-    def __repr__(self):
-        args_str = ", ".join(repr(arg) for arg in self.args)
+    def __str__(self):
+        args_str = ", ".join(str(arg) for arg in self.args)
         return f"{self.name}({args_str})"
 
 
@@ -299,6 +298,7 @@ class LoopInfo:
     preheader: BasicBlock
     header: BasicBlock
     tail: BasicBlock
+
     blocks: set[BasicBlock] = field(init=False, default_factory=set)
 
 
@@ -747,9 +747,7 @@ class CFGBuilder:
         self.cur_block.add_child(exit_block)
 
         self._switch_to_block(exit_block)
-        self.cfg.loops_info.append(
-            LoopInfo(preheader_block, body_block, tail_block, exit_block)
-        )
+        self.cfg.loops_info.append(LoopInfo(preheader_block, body_block, tail_block))
 
     def _build_unconditional_loop(self, stmt: UnconditionalLoop):
         assert self.cur_block is not None, "Current block must be set"
@@ -790,9 +788,7 @@ class CFGBuilder:
         self.cur_block.add_child(exit_block)
 
         self._switch_to_block(exit_block)
-        self.cfg.loops_info.append(
-            LoopInfo(preheader_block, body_block, tail_block, exit_block)
-        )
+        self.cfg.loops_info.append(LoopInfo(preheader_block, body_block, tail_block))
 
     def _build_return(self, stmt: Return):
         assert self.cur_block is not None, "Current block must be set"

@@ -1,16 +1,39 @@
-func foo() -> int {
+func asdfasfd() -> int {
+    let v int = 0;
     let a int = 0;
-    for (let i int = 0; i < 10; i = i + 1) {
-        a = input();
-        if (a >= 10) {
-            a = 10;
+    for {
+        if (foo()) {
             break;
-        } 
+        }
+        v = 2;
     }
-    return a;
+    return v;
 }
 
-func input() -> int {
-    // внешняя функция
+
+func main() -> int {
+    let v int = 0;
+    let a int = 0;
+    for {
+        if (foo()) {
+            v = 2;
+            if (bar()) {
+                break;
+            }
+        }
+        a = v + 2;
+        print(a);
+    }
+    return v;
+}
+
+func foo() -> int {
     return 42;
+}
+
+func bar() -> int {
+    return -11;
+}
+
+func print(x int) -> void {
 }
