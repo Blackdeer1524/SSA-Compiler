@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
@@ -20,8 +20,8 @@ from src.ssa.cfg import (
     SSAValue,
     SSAVariable,
 )
-from src.ssa.dominance import compute_dominance_frontier_graph, compute_dominator_tree
-from src.ssa.helpers import unwrap
+from src.ir.dominance import compute_dominance_frontier_graph, compute_dominator_tree
+from src.ir.helpers import unwrap
 
 
 @dataclass

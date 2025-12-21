@@ -1,7 +1,7 @@
 import re
 from typing import Iterable
 
-from src.ssa.helpers import bb_colors, color_label
+from src.ir.helpers import bb_colors, color_label
 
 
 def _htmlify_lines(lines: Iterable[str]) -> str:

@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 from collections import defaultdict, deque
-from turtle import back
 from typing import Optional, Iterable, override
 
 from src.optimizations.base import OptimizationPass
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
@@ -22,8 +19,8 @@ from src.ssa.cfg import (
     SSAVariable,
     SSAConstant,
 )
-from src.ssa.dominance import DominatorTree, compute_dominator_tree
-from src.ssa.helpers import unwrap
+from src.ir.dominance import DominatorTree, compute_dominator_tree
+from src.ir.helpers import unwrap
 
 
 class LICM(OptimizationPass):
@@ -76,14 +73,14 @@ class LICM(OptimizationPass):
         seen_blocks = set([])
         q = deque([header])
         while len(q) > 0:
-            t = q.popleft()
-            if t in seen_blocks:
+            bb = q.popleft()
+            if bb in seen_blocks:
                 continue
 
-            seen_blocks.add(t)
-            yield t
+            seen_blocks.add(bb)
+            yield bb
 
-            q.extend((s for s in t.succ if s in loop_blocks and s not in seen_blocks))
+            q.extend((s for s in bb.succ if s in loop_blocks and s not in seen_blocks))
 
     def _collect_loop_blocks(self, cfg: CFG):
         for loop_info in cfg.loops_info:

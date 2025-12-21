@@ -1,9 +1,9 @@
 from typing import Optional
-from src.ssa.cfg import CFG, BasicBlock
+from src.ir.cfg import CFG, BasicBlock
 from collections import defaultdict
 from dataclasses import dataclass
 
-from src.ssa.helpers import unwrap
+from src.ir.helpers import unwrap
 
 
 @dataclass

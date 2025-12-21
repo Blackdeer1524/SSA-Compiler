@@ -2,7 +2,7 @@ from collections import defaultdict, deque
 from typing import Iterable, Optional, override
 
 from src.optimizations.base import OptimizationPass
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
@@ -23,7 +23,7 @@ from src.ssa.cfg import (
     SSAValue,
     SSAVariable,
 )
-from src.ssa.helpers import unwrap
+from src.ir.helpers import unwrap
 
 
 class DCE(OptimizationPass):

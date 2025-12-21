@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional, Iterable, override
 
 from src.optimizations.base import OptimizationPass
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
@@ -24,7 +24,7 @@ from src.ssa.cfg import (
     SSAVariable,
     SSAConstant,
 )
-from src.ssa.helpers import unwrap
+from src.ir.helpers import unwrap
 
 
 @dataclass(frozen=True)

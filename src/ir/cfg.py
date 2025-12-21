@@ -29,7 +29,7 @@ from src.parsing.parser import (
     LValueArrayAccess,
 )
 from src.parsing.semantic import SymbolTable
-from src.ssa.helpers import bb_colors, color_label, unwrap
+from src.ir.helpers import bb_colors, color_label, unwrap
 
 
 @dataclass
