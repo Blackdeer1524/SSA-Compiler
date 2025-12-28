@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional, Iterable, override
 
 from src.optimizations.base import OptimizationPass
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
@@ -24,6 +24,7 @@ from src.ssa.cfg import (
     SSAVariable,
     SSAConstant,
 )
+from src.ir.helpers import unwrap
 
 
 @dataclass(frozen=True)
@@ -106,20 +107,18 @@ class SCCP(OptimizationPass):
             for phi in bb.phi_nodes.values():
                 self.inst_block[phi] = bb
                 # LHS def
-                if phi.lhs.version is not None:
-                    self.defs[(phi.lhs.name, phi.lhs.version)] = phi
+                self.defs[(phi.lhs.name, unwrap(phi.lhs.version))] = phi
                 # RHS uses
                 for pred_label, val in phi.rhs.items():
-                    if isinstance(val, SSAVariable) and val.version is not None:
-                        self.uses[(val.name, val.version)].add(phi)
+                    if isinstance(val, SSAVariable):
+                        self.uses[(val.name, unwrap(val.version))].add(phi)
 
             # Instructions
             for inst in bb.instructions:
                 self.inst_block[inst] = bb
                 match inst:
                     case InstAssign(lhs, rhs):
-                        if lhs.version is not None:
-                            self.defs[(lhs.name, lhs.version)] = inst
+                        self.defs[(lhs.name, unwrap(lhs.version))] = inst
                         for v in self._iter_uses_from_rhs(rhs):
                             self.uses[v].add(inst)
                     case InstCmp(left, right):
@@ -135,11 +134,9 @@ class SCCP(OptimizationPass):
                         for v in self._iter_uses_from_rhs(value):
                             self.uses[v].add(inst)
                     case InstArrayInit(lhs):
-                        if lhs.version is not None:
-                            self.defs[(lhs.name, lhs.version)] = inst
+                        self.defs[(lhs.name, unwrap(lhs.version))] = inst
                     case InstGetArgument(lhs, _):
-                        if lhs.version is not None:
-                            self.defs[(lhs.name, lhs.version)] = inst
+                        self.defs[(lhs.name, unwrap(lhs.version))] = inst
                     case _:
                         pass
 
@@ -175,10 +172,9 @@ class SCCP(OptimizationPass):
         if (pred, succ) in self.feasible_edges:
             return
         self.feasible_edges.add((pred, succ))
-        # First time succ gets any feasible edge => executable
+
         if succ not in self.executable_blocks:
             self._mark_block_executable(succ)
-        # Update phis in successor
         self._update_phis_for_edge(pred, succ)
 
     def _update_phis_for_edge(self, pred: BasicBlock, succ: BasicBlock):
@@ -190,9 +186,9 @@ class SCCP(OptimizationPass):
         if isinstance(v, SSAConstant):
             return LatticeValue.const(v.value)
         if isinstance(v, SSAVariable):
-            if v.version is None:
-                return LatticeValue.undef()
-            return self.value_state.get((v.name, v.version), LatticeValue.undef())
+            return self.value_state.get(
+                (v.name, unwrap(v.version)), LatticeValue.undef()
+            )
         return LatticeValue.nac()
 
     def _set_lattice(self, key: tuple[str, int], val: LatticeValue):
@@ -225,17 +221,17 @@ class SCCP(OptimizationPass):
 
     def _process_variable_users(self, key: tuple[str, int]):
         for user in self.uses.get(key, []):
+            bb = self.inst_block[user]
+            if bb not in self.executable_blocks:
+                continue
+
             match user:
                 case InstPhi():
-                    bb = self.inst_block[user]
-                    if bb in self.executable_blocks:
-                        self._evaluate_phi(user)
+                    self._evaluate_phi(user)
                 case InstAssign():
                     self._evaluate_assign(user)
                 case InstCmp():
-                    bb = self.inst_block[user]
-                    if bb in self.executable_blocks:
-                        self._evaluate_branch(user, bb)
+                    self._evaluate_branch(user, bb)
                 case InstStore():
                     self._evaluate_store(user)
                 case _:
@@ -258,44 +254,38 @@ class SCCP(OptimizationPass):
         for v in vals:
             result = join(result, v)
 
-        assert phi.lhs.version is not None
-        self._set_lattice((phi.lhs.name, phi.lhs.version), result)
+        self._set_lattice((phi.lhs.name, unwrap(phi.lhs.version)), result)
 
     def _evaluate_assign(self, inst: InstAssign):
         lhs = inst.lhs
         val_lv = self._evaluate_rhs(inst.rhs)
-
-        assert lhs.version is not None
-        self._set_lattice((lhs.name, lhs.version), val_lv)
+        self._set_lattice((lhs.name, unwrap(lhs.version)), val_lv)
 
     def _evaluate_rhs(self, rhs: Operation | SSAValue) -> LatticeValue:
-        if isinstance(rhs, Operation):
-            match rhs:
-                case OpLoad():
-                    return LatticeValue.nac()
-                case OpBinary(op, left, right):
-                    lv = self._get_lattice_of_value(left)
-                    rv = self._get_lattice_of_value(right)
-                    return self._eval_binary(op, lv, rv)
-                case OpUnary(op, val):
-                    vv = self._get_lattice_of_value(val)
-                    return self._eval_unary(op, vv)
-                case OpCall(_, _):
-                    # Unknown side-effects and results - not a constant
-                    return LatticeValue.nac()
-        else:
+        if not isinstance(rhs, Operation):
             return self._get_lattice_of_value(rhs)
+
+        match rhs:
+            case OpLoad():
+                return LatticeValue.nac()
+            case OpBinary(op, left, right):
+                lv = self._get_lattice_of_value(left)
+                rv = self._get_lattice_of_value(right)
+                return self._eval_binary(op, lv, rv)
+            case OpUnary(op, val):
+                vv = self._get_lattice_of_value(val)
+                return self._eval_unary(op, vv)
+            case OpCall(_, _):
+                return LatticeValue.nac()
         return LatticeValue.nac()
 
     def _evaluate_array_init(self, inst: InstArrayInit):
         lhs = inst.lhs
-        assert lhs.version is not None
-        self._set_lattice((lhs.name, lhs.version), LatticeValue.nac())
+        self._set_lattice((lhs.name, unwrap(lhs.version)), LatticeValue.nac())
 
     def _evaluate_get_argument(self, inst: InstGetArgument):
         lhs = inst.lhs
-        assert lhs.version is not None
-        self._set_lattice((lhs.name, lhs.version), LatticeValue.nac())
+        self._set_lattice((lhs.name, unwrap(lhs.version)), LatticeValue.nac())
 
     def _evaluate_store(self, inst: InstStore):
         return LatticeValue.nac()
@@ -304,70 +294,69 @@ class SCCP(OptimizationPass):
         return 1 if v != 0 else 0
 
     def _eval_binary(self, op: str, a: LatticeValue, b: LatticeValue) -> LatticeValue:
+        if op == "*":
+            if a.is_const() and a.value == 0 or b.is_const() and b.value == 0:
+                return LatticeValue.const(0)
+
         if a.is_nac() or b.is_nac():
             return LatticeValue.nac()
-        if not (a.is_const() and b.is_const()):
+
+        if not a.is_const() or not b.is_const():
             return LatticeValue.undef()
-        x, y = a.value, b.value
-        assert x is not None and y is not None
-        try:
-            if op == "+":
-                return LatticeValue.const(x + y)
-            if op == "-":
-                return LatticeValue.const(x - y)
-            if op == "*":
-                return LatticeValue.const(x * y)
-            if op == "/":
-                if y == 0:
-                    return LatticeValue.nac()
-                return LatticeValue.const(x // y)
-            if op == "%":
-                if y == 0:
-                    return LatticeValue.nac()
-                return LatticeValue.const(x % y)
-            if op == "==":
-                return LatticeValue.const(1 if x == y else 0)
-            if op == "!=":
-                return LatticeValue.const(1 if x != y else 0)
-            if op == "<":
-                return LatticeValue.const(1 if x < y else 0)
-            if op == "<=":
-                return LatticeValue.const(1 if x <= y else 0)
-            if op == ">":
-                return LatticeValue.const(1 if x > y else 0)
-            if op == ">=":
-                return LatticeValue.const(1 if x >= y else 0)
-            if op == "&&":
-                return LatticeValue.const(self._truthy(x) & self._truthy(y))
-            if op == "||":
-                return LatticeValue.const(
-                    1 if (self._truthy(x) | self._truthy(y)) else 0
-                )
-        except Exception:
-            return LatticeValue.nac()
-        return LatticeValue.nac()
+
+        x, y = unwrap(a.value), unwrap(b.value)
+        if op == "+":
+            return LatticeValue.const(x + y)
+        if op == "-":
+            return LatticeValue.const(x - y)
+        if op == "*":
+            return LatticeValue.const(x * y)
+        if op == "/":
+            if y == 0:
+                return LatticeValue.nac()
+            return LatticeValue.const(x // y)
+        if op == "%":
+            if y == 0:
+                return LatticeValue.nac()
+            return LatticeValue.const(x % y)
+        if op == "==":
+            return LatticeValue.const(1 if x == y else 0)
+        if op == "!=":
+            return LatticeValue.const(1 if x != y else 0)
+        if op == "<":
+            return LatticeValue.const(1 if x < y else 0)
+        if op == "<=":
+            return LatticeValue.const(1 if x <= y else 0)
+        if op == ">":
+            return LatticeValue.const(1 if x > y else 0)
+        if op == ">=":
+            return LatticeValue.const(1 if x >= y else 0)
+        if op == "&&":
+            return LatticeValue.const(self._truthy(x) & self._truthy(y))
+        if op == "||":
+            return LatticeValue.const(1 if (self._truthy(x) | self._truthy(y)) else 0)
+
+        raise RuntimeError(f"Unknown operator: {op}")
 
     def _eval_unary(self, op: str, v: LatticeValue) -> LatticeValue:
         if v.is_nac():
             return LatticeValue.nac()
         if not v.is_const():
             return LatticeValue.undef()
-        x = v.value
-        assert x is not None
-        try:
-            if op == "-":
-                return LatticeValue.const(-x)
-            if op == "!":
-                return LatticeValue.const(0 if x != 0 else 1)
-        except Exception:
-            return LatticeValue.nac()
+
+        x = unwrap(v.value)
+        if op == "+":
+            return LatticeValue.const(x)
+        if op == "-":
+            return LatticeValue.const(-x)
+        if op == "!":
+            return LatticeValue.const(0 if x != 0 else 1)
+
         return LatticeValue.nac()
 
     def _evaluate_branch(self, br: InstCmp, bb: BasicBlock):
-        left = br.left
-        right = br.right
-        lv = self._get_lattice_of_value(left)
-        rv = self._get_lattice_of_value(right)
+        lv = self._get_lattice_of_value(br.left)
+        rv = self._get_lattice_of_value(br.right)
         if lv.is_const() and rv.is_const():
             cond_true = 1 if lv.value == rv.value else 0
             if cond_true == 1:
@@ -481,8 +470,8 @@ class SCCP(OptimizationPass):
         return rhs
 
     def _replace_value(self, v: SSAValue) -> SSAValue:
-        if isinstance(v, SSAVariable) and v.version is not None:
-            lv = self.value_state.get((v.name, v.version))
+        if isinstance(v, SSAVariable):
+            lv = self.value_state.get((v.name, unwrap(v.version)))
             if lv is not None and lv.is_const():
                 return SSAConstant(lv.value or 0)
         return v

@@ -14,19 +14,19 @@ graph: cfg
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
 cfg-O1:
-	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-sccp --disable-licm --disable-dce --disable-block-cleanup $(FLAGS)
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-sccp --disable-licm --disable-dce  $(FLAGS)
 	
 graph-O1: cfg-O1
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
 cfg-sccp:
-	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-licm --disable-dce --disable-block-cleanup $(FLAGS)
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-licm --disable-dce  $(FLAGS)
 	
 graph-sccp: cfg-sccp
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
 cfg-dce:
-	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-licm --disable-sccp --disable-block-cleanup $(FLAGS)
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-licm --disable-sccp  $(FLAGS)
 	
 graph-dce: cfg-dce
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
@@ -38,7 +38,7 @@ graph-no-ssa: cfg-no-ssa
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)
 
 cfg-licm:
-	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-sccp --disable-dce --disable-block-cleanup $(FLAGS)
+	python main.py --input $(INPUT) --dump-cfg-dot $(DOT_FILE) --disable-sccp --disable-dce  $(FLAGS)
 	
 graph-licm: cfg-licm
 	dot -Tsvg $(DOT_FILE) -o $(SVG_FILE) && firefox $(SVG_FILE)

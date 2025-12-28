@@ -7,6 +7,30 @@ class TestSSA(base.TestBase):
         passes = []
         super().__init__(passes, *args)
 
+    def test_consecutive_assignments(self):
+        src = self.make_main("""
+            let a int = 0;
+            let b int = 0;
+            b = a;
+            return b;
+        """)
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                a_v1 = 0
+                b_v1 = 0
+                b_v2 = a_v1
+                return(b_v2)
+            ; succ: [BB1]
+
+            ; pred: [BB0]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
     def test_for_loop_gen(self):
         src = self.make_main("""
             for (let j int = 0; j < 10; j = j + 1) {
@@ -31,8 +55,8 @@ class TestSSA(base.TestBase):
             BB2: ; [condition check]
                 j_v1 = 0
                 %0_v1 = j_v1 < 10
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB3 else jmp BB7
+                cmp(%0_v1, 0)
+                if CF == 0 then jmp BB3 else jmp BB7
             ; succ: [BB3, BB7]
 
             ; pred: [BB2, BB6]
@@ -50,26 +74,33 @@ class TestSSA(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 j_v2 = ϕ(BB3: j_v1, BB5: j_v3)
 
                 %4_v1 = j_v2 + 1
                 %3_v1 = %4_v1 == 6
-                cmp(%3_v1, 1)
-                if CF == 1 then jmp BB8 else jmp BB9
-            ; succ: [BB9, BB8]
+                cmp(%3_v1, 0)
+                if CF == 0 then jmp BB8 else jmp BB9
+            ; succ: [BB8, BB9]
 
             ; pred: [BB4]
-            BB8: ; [then]
+            BB9: ; [merge]
+                %8_v1 = j_v2 == 7
+                cmp(%8_v1, 0)
+                if CF == 0 then jmp BB10 else jmp BB11
+            ; succ: [BB10, BB11]
+
+            ; pred: [BB9]
+            BB11: ; [merge]
                 jmp BB5
             ; succ: [BB5]
 
             ; pred: [BB8, BB11]
-            BB5: ; [loop update]
+            BB5: ; [loop latch]
                 j_v3 = j_v2 + 1
                 %13_v1 = j_v3 < 10
-                cmp(%13_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%13_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
 
             ; pred: [BB10, BB5]
@@ -77,22 +108,15 @@ class TestSSA(base.TestBase):
                 jmp BB7
             ; succ: [BB7]
 
-            ; pred: [BB4]
-            BB9: ; [merge]
-                %8_v1 = j_v2 == 7
-                cmp(%8_v1, 1)
-                if CF == 1 then jmp BB10 else jmp BB11
-            ; succ: [BB11, BB10]
-
             ; pred: [BB9]
             BB10: ; [then]
                 jmp BB6
             ; succ: [BB6]
 
-            ; pred: [BB9]
-            BB11: ; [merge]
+            ; pred: [BB4]
+            BB8: ; [then]
                 jmp BB5
-            ; succ: [BB5]
+            ; succ: [BB5] 
         """).strip()
 
         self.assert_ir(src, expected_ir)
@@ -116,8 +140,8 @@ class TestSSA(base.TestBase):
             BB2: ; [condition check]
                 j_v1 = i_v1
                 %0_v1 = j_v1 < 10
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB3 else jmp BB7
+                cmp(%0_v1, 0)
+                if CF == 0 then jmp BB3 else jmp BB7
             ; succ: [BB3, BB7]
 
             ; pred: [BB2, BB6]
@@ -135,18 +159,18 @@ class TestSSA(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 j_v2 = ϕ(BB3: j_v1, BB5: j_v3)
 
                 jmp BB5
             ; succ: [BB5]
 
             ; pred: [BB4]
-            BB5: ; [loop update]
+            BB5: ; [loop latch]
                 j_v3 = j_v2 + 1
                 %5_v1 = j_v3 < 10
-                cmp(%5_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%5_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
@@ -185,28 +209,28 @@ class TestSSA(base.TestBase):
             ; succ: [BB3]
 
             ; pred: [BB2, BB4]
-            BB3: ; [uncond loop header]
+            BB3: ; [uncond loop body]
                 %0_v1 = i_v1 == 5
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB7 else jmp BB8
-            ; succ: [BB8, BB7]
-
-            ; pred: [BB3]
-            BB7: ; [then]
-                jmp BB4
-            ; succ: [BB4]
-
-            ; pred: [BB7, BB10]
-            BB4: ; [uncond loop update]
-                jmp BB3
-            ; succ: [BB3]
+                cmp(%0_v1, 0)
+                if CF == 0 then jmp BB7 else jmp BB8
+            ; succ: [BB7, BB8]
 
             ; pred: [BB3]
             BB8: ; [merge]
                 %3_v1 = i_v1 > 10
-                cmp(%3_v1, 1)
-                if CF == 1 then jmp BB9 else jmp BB10
-            ; succ: [BB10, BB9]
+                cmp(%3_v1, 0)
+                if CF == 0 then jmp BB9 else jmp BB10
+            ; succ: [BB9, BB10]
+
+            ; pred: [BB8]
+            BB10: ; [merge]
+                jmp BB4
+            ; succ: [BB4]
+
+            ; pred: [BB7, BB10]
+            BB4: ; [uncond loop latch]
+                jmp BB3
+            ; succ: [BB3]
 
             ; pred: [BB8]
             BB9: ; [then]
@@ -227,8 +251,8 @@ class TestSSA(base.TestBase):
             BB1: ; [exit]
             ; succ: []
 
-            ; pred: [BB8]
-            BB10: ; [merge]
+            ; pred: [BB3]
+            BB7: ; [then]
                 jmp BB4
             ; succ: [BB4]
         """).strip()
@@ -256,8 +280,8 @@ class TestSSA(base.TestBase):
             BB2: ; [condition check]
                 i_v1 = 0
                 %0_v1 = i_v1 < 64
-                cmp(%0_v1, 1)
-                if CF == 1 then jmp BB3 else jmp BB7
+                cmp(%0_v1, 0)
+                if CF == 0 then jmp BB3 else jmp BB7
             ; succ: [BB3, BB7]
 
             ; pred: [BB2, BB6]
@@ -274,7 +298,7 @@ class TestSSA(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 i_v2 = ϕ(BB3: i_v1, BB5: i_v3)
 
                 %4_v1 = i_v2 * 1
@@ -284,11 +308,11 @@ class TestSSA(base.TestBase):
             ; succ: [BB5]
 
             ; pred: [BB4]
-            BB5: ; [loop update]
+            BB5: ; [loop latch]
                 i_v3 = i_v2 + 1
                 %9_v1 = i_v3 < 64
-                cmp(%9_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%9_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]

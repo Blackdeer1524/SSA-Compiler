@@ -83,18 +83,18 @@ class Lexer:
             "continue": TokenType.CONTINUE,
         }
 
-    def current_char(self) -> Optional[str]:
+    def _current_char(self) -> Optional[str]:
         if self.pos >= len(self.source):
             return None
         return self.source[self.pos]
 
-    def peek_char(self, offset: int = 1) -> Optional[str]:
+    def _peek_char(self, offset: int = 1) -> Optional[str]:
         peek_pos = self.pos + offset
         if peek_pos >= len(self.source):
             return None
         return self.source[peek_pos]
 
-    def advance(self) -> Optional[str]:
+    def _advance(self) -> Optional[str]:
         if self.pos >= len(self.source):
             return None
 
@@ -109,164 +109,164 @@ class Lexer:
 
         return char
 
-    def skip_whitespace(self):
-        char = self.current_char()
+    def _skip_whitespace(self):
+        char = self._current_char()
         while char and char in " \t\r\n":
-            self.advance()
-            char = self.current_char()
+            self._advance()
+            char = self._current_char()
 
-    def skip_comment(self):
-        if self.current_char() == "/" and self.peek_char() == "/":
+    def _skip_comment(self):
+        if self._current_char() == "/" and self._peek_char() == "/":
             # Skip both slashes
-            self.advance()
-            self.advance()
+            self._advance()
+            self._advance()
             # Skip until newline or EOF (support both \n and \r\n)
             while True:
-                char = self.current_char()
+                char = self._current_char()
                 if char is None:
                     break
                 if char == "\n":
-                    self.advance()
+                    self._advance()
                     break
                 if char == "\r":
-                    self.advance()
-                    if self.current_char() == "\n":
-                        self.advance()
+                    self._advance()
+                    if self._current_char() == "\n":
+                        self._advance()
                     break
-                self.advance()
+                self._advance()
 
-    def read_integer(self) -> str:
+    def _read_integer(self) -> str:
         start_pos = self.pos
-        char = self.current_char()
+        char = self._current_char()
         while char and char.isdigit():
-            self.advance()
-            char = self.current_char()
+            self._advance()
+            char = self._current_char()
         return self.source[start_pos : self.pos]
 
-    def read_identifier(self) -> str:
+    def _read_identifier(self) -> str:
         start_pos = self.pos
-        char = self.current_char()
+        char = self._current_char()
         while char and (char.isalnum() or char == "_"):
-            self.advance()
-            char = self.current_char()
+            self._advance()
+            char = self._current_char()
         return self.source[start_pos : self.pos]
 
-    def next_token(self) -> Token:
+    def _next_token(self) -> Token:
         # Skip whitespace and comments
         while True:
-            self.skip_whitespace()
-            if self.current_char() == "/" and self.peek_char() == "/":
-                self.skip_comment()
+            self._skip_whitespace()
+            if self._current_char() == "/" and self._peek_char() == "/":
+                self._skip_comment()
             else:
                 break
 
         # Check for EOF
-        if self.current_char() is None:
+        if self._current_char() is None:
             return Token(TokenType.EOF, "", self.line, self.column)
 
         line = self.line
         column = self.column
 
-        char = self.current_char()
+        char = self._current_char()
 
         if char == "(":
-            self.advance()
+            self._advance()
             return Token(TokenType.LPAREN, "(", line, column)
         elif char == ")":
-            self.advance()
+            self._advance()
             return Token(TokenType.RPAREN, ")", line, column)
         elif char == "{":
-            self.advance()
+            self._advance()
             return Token(TokenType.LBRACE, "{", line, column)
         elif char == "}":
-            self.advance()
+            self._advance()
             return Token(TokenType.RBRACE, "}", line, column)
         elif char == "[":
-            self.advance()
+            self._advance()
             return Token(TokenType.LBRACKET, "[", line, column)
         elif char == "]":
-            self.advance()
+            self._advance()
             return Token(TokenType.RBRACKET, "]", line, column)
         elif char == ";":
-            self.advance()
+            self._advance()
             return Token(TokenType.SEMICOLON, ";", line, column)
         elif char == ",":
-            self.advance()
+            self._advance()
             return Token(TokenType.COMMA, ",", line, column)
         elif char == "+":
-            self.advance()
+            self._advance()
             return Token(TokenType.PLUS, "+", line, column)
         elif char == "*":
-            self.advance()
+            self._advance()
             return Token(TokenType.MULTIPLY, "*", line, column)
         elif char == "/":
-            self.advance()
+            self._advance()
             return Token(TokenType.DIVIDE, "/", line, column)
         elif char == "%":
-            self.advance()
+            self._advance()
             return Token(TokenType.MODULO, "%", line, column)
         elif char == "!":
-            self.advance()
-            if self.current_char() == "=":
-                self.advance()
+            self._advance()
+            if self._current_char() == "=":
+                self._advance()
                 return Token(TokenType.NOT_EQUAL, "!=", line, column)
             return Token(TokenType.NOT, "!", line, column)
 
         elif char == "=":
-            self.advance()
-            if self.current_char() == "=":
-                self.advance()
+            self._advance()
+            if self._current_char() == "=":
+                self._advance()
                 return Token(TokenType.EQUAL, "==", line, column)
             return Token(TokenType.ASSIGN, "=", line, column)
         elif char == "<":
-            self.advance()
-            if self.current_char() == "=":
-                self.advance()
+            self._advance()
+            if self._current_char() == "=":
+                self._advance()
                 return Token(TokenType.LESS_EQUAL, "<=", line, column)
             return Token(TokenType.LESS, "<", line, column)
         elif char == ">":
-            self.advance()
-            if self.current_char() == "=":
-                self.advance()
+            self._advance()
+            if self._current_char() == "=":
+                self._advance()
                 return Token(TokenType.GREATER_EQUAL, ">=", line, column)
             return Token(TokenType.GREATER, ">", line, column)
         elif char == "&":
-            self.advance()
-            if self.current_char() == "&":
-                self.advance()
+            self._advance()
+            if self._current_char() == "&":
+                self._advance()
                 return Token(TokenType.AND, "&&", line, column)
             return Token(TokenType.ERROR, f"Unexpected character: &", line, column)
         elif char == "|":
-            self.advance()
-            if self.current_char() == "|":
-                self.advance()
+            self._advance()
+            if self._current_char() == "|":
+                self._advance()
                 return Token(TokenType.OR, "||", line, column)
             return Token(TokenType.ERROR, f"Unexpected character: |", line, column)
         elif char == "-":
-            self.advance()
-            if self.current_char() == ">":
-                self.advance()
+            self._advance()
+            if self._current_char() == ">":
+                self._advance()
                 return Token(TokenType.ARROW, "->", line, column)
             return Token(TokenType.MINUS, "-", line, column)
 
         elif char and char.isdigit():
-            value = self.read_integer()
+            value = self._read_integer()
             return Token(TokenType.INTEGER, value, line, column)
 
         elif char and (char.isalpha() or char == "_"):
-            value = self.read_identifier()
+            value = self._read_identifier()
             token_type = self.keywords.get(value, TokenType.IDENTIFIER)
             return Token(token_type, value, line, column)
 
         else:
-            self.advance()
+            self._advance()
             return Token(TokenType.ERROR, f"Unexpected character: {char}", line, column)
 
     def tokenize(self) -> list[Token]:
         """Tokenize the entire source code."""
         tokens = []
         while True:
-            token = self.next_token()
+            token = self._next_token()
             tokens.append(token)
             if token.type == TokenType.EOF:
                 break

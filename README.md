@@ -45,9 +45,9 @@ func main() -> void {
 ## Грамматика
 
 ```
-PROGRAMM ::= FUNCTION+
+PROGRAMM ::= FUNCTION* EOF
 
-FUNCTION ::= func IDENTIFIER "(" ARG_LIST ")" "->" TYPE "{" BLOCK "}"
+FUNCTION ::= "func" IDENTIFIER "(" ARG_LIST ")" "->" TYPE "{" BLOCK "}"
 
 ARG_LIST ::= EPSILON | ARG ("," ARG)*
 
@@ -57,38 +57,32 @@ BLOCK ::= "{" STATEMENTS "}"
 
 STATEMENTS ::= STATEMENT*
 
-STATEMENT ::=
-    ASSIGNMENT
-    | REASSIGNMENT
-    | CONDITION
-    | LOOP
-    | FUNCTION_CALL ";"
-    | RETURN ";"
-    | BREAK ";"
-    | CONTINUE ";"
-    | BLOCK
+STATEMENT ::= ASSIGNMENT ";"
+              | REASSIGNMENT ";"
+              | CONDITION
+              | LOOP
+              | FUNCTION_CALL ";"
+              | RETURN ";"
+              | "break" ";"
+              | "continue" ";"
+              | BLOCK
 
-ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" (EXPR | "{}") ";"
+ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" (EXPR | "{}")
 
-REASSIGNMENT ::= EXPR_LVALUE "=" EXPR ";"
+REASSIGNMENT ::= EXPR_LVALUE "=" EXPR
 
 EXPR_LVALUE ::= IDENTIFIER ("[" EXPR "]")*
 
-CONDITION ::= if "(" EXPR ")" BLOCK [else BLOCK]
+CONDITION ::= "if" "(" EXPR ")" BLOCK ["else" BLOCK]
 
-LOOP ::=
-    for BLOCK
-    | for "(" ASSIGNMENT ";" EXPR ";" REASSIGNMENT ")" BLOCK
+LOOP ::= for BLOCK
+         | for "(" ASSIGNMENT ("," ASSIGNMENT)* ";" EXPR ";" REASSIGNMENT ("," REASSIGNMENT)* ")" BLOCK
 
 FUNCTION_CALL ::= IDENTIFIER "(" EXPR_LIST ")"
 
 EXPR_LIST ::= EPSILON | EXPR ("," EXPR)*
 
-RETURN ::= return [EXPR]
-
-BREAK ::= break
-
-CONTINUE ::= continue
+RETURN ::= "return" [EXPR]
 
 EXPR ::= EXPR_OR
 
@@ -102,14 +96,13 @@ EXPR_ADD ::= EXPR_MUL (("+" | "-") EXPR_MUL)*
 
 EXPR_MUL ::= EXPR_UNARY (("*" | "/" | "%") EXPR_UNARY)*
 
-EXPR_UNARY ::=
-    EXPR_ATOM
-    | "-" EXPR_UNARY
-    | "!" EXPR_UNARY
+EXPR_UNARY ::= EXPR_ATOM
+               | "+" EXPR_UNARY
+               | "-" EXPR_UNARY
+               | "!" EXPR_UNARY
 
-EXPR_ATOM ::=
-    IDENTIFIER ("[" EXPR "]")*
-    | INTEGER
-    | "(" EXPR ")"
-    | FUNCTION_CALL
+EXPR_ATOM ::= IDENTIFIER ("[" EXPR "]")*
+              | INTEGER
+              | "(" EXPR ")"
+              | FUNCTION_CALL
 ```

@@ -1,11 +1,10 @@
 import unittest
 from src.parsing.lexer import Lexer
 from src.parsing.parser import (
+    CallExpression,
     Parser,
     ParseError,
     Program,
-    Function,
-    Argument,
     Assignment,
     Reassignment,
     Condition,
@@ -13,12 +12,10 @@ from src.parsing.parser import (
     UnconditionalLoop,
     FunctionCall,
     Return,
-    Block,
     BinaryOp,
     UnaryOp,
     Identifier,
     IntegerLiteral,
-    CallExpression,
 )
 
 
@@ -33,9 +30,8 @@ class TestParser(unittest.TestCase):
 
     def test_empty_program(self):
         """Test parsing empty program."""
-        # Empty program is valid (no functions)
-        ast = self.parse_source("")
-        self.assertEqual(len(ast.functions), 0)
+        # Empty program is not valid (no functions)
+        self.assertRaises(ParseError, lambda: self.parse_source(""))
 
     def test_simple_function_void(self):
         """Test parsing a simple void function."""
@@ -200,11 +196,11 @@ func bar() -> int { return 1; }"""
 
         stmt = ast.functions[0].body.statements[0]
         self.assertIsInstance(stmt, ForLoop)
-        self.assertIsInstance(stmt.init, Assignment)
-        self.assertEqual(stmt.init.name, "i")
+        self.assertIsInstance(stmt.init[0], Assignment)
+        self.assertEqual(stmt.init[0].name, "i")
         self.assertIsInstance(stmt.condition, BinaryOp)
-        self.assertIsInstance(stmt.update, Reassignment)
-        self.assertEqual(stmt.update.lvalue.name, "i")
+        self.assertIsInstance(stmt.update[0], Reassignment)
+        self.assertEqual(stmt.update[0].lvalue.name, "i")
 
     # Expression tests
 
@@ -629,6 +625,30 @@ func main() -> void {
         parser = Parser(lexer)
         with self.assertRaises(ParseError):
             parser.parse()
+
+    def test_multiple_assignments_in_for_loop(self):
+        """Test parsing multiple assignments in for loop."""
+        source = """
+            func main() -> void {
+                for (let i int = 0, let j int = 0; i + j < 10; i = i + 1, j = j + 1) {
+                }
+            }
+        """
+        lexer = Lexer(source)
+        parser = Parser(lexer)
+        ast = parser.parse()
+        loop = ast.functions[0].body.statements[0]
+        self.assertIsInstance(loop, ForLoop)
+        self.assertEqual(len(loop.init), 2)
+        self.assertIsInstance(loop.init[0], Assignment)
+        self.assertEqual(loop.init[0].name, "i")
+        self.assertIsInstance(loop.init[1], Assignment)
+        self.assertEqual(loop.init[1].name, "j")
+        self.assertIsInstance(loop.condition, BinaryOp)
+        self.assertIsInstance(loop.update[0], Reassignment)
+        self.assertEqual(loop.update[0].lvalue.name, "i")
+        self.assertIsInstance(loop.update[1], Reassignment)
+        self.assertEqual(loop.update[1].lvalue.name, "j")
 
 
 if __name__ == "__main__":

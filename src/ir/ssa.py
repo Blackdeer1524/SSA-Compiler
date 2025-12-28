@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
@@ -20,8 +20,8 @@ from src.ssa.cfg import (
     SSAValue,
     SSAVariable,
 )
-from src.ssa.dominance import compute_dominance_frontier_graph, compute_dominator_tree
-from src.ssa.helpers import unwrap
+from src.ir.dominance import compute_dominance_frontier_graph, compute_dominator_tree
+from src.ir.helpers import unwrap
 
 
 @dataclass
@@ -123,11 +123,7 @@ class SSABuilder:
 
                     y.insert_phi(var)
                     has_phi.add(y)
-                    if not any(
-                        isinstance(i, (InstAssign, InstGetArgument, InstArrayInit))
-                        and i.lhs.name == var
-                        for i in y.instructions
-                    ):
+                    if y not in defs_by_var[var].defining_blocks:
                         work.append(y)
 
     def _rename_inst(self, inst: Instruction, bb: BasicBlock) -> Optional[str]:
@@ -206,6 +202,7 @@ class SSABuilder:
 
         type_info = bb.symbol_table.lookup_variable(var.name)
         if type_info is None:
+            # coulnd't find type info => some tmp variable
             match inst:
                 case InstAssign():
                     for v in iter_vars_from_rhs(inst.rhs):
@@ -219,7 +216,6 @@ class SSABuilder:
                             continue
                         var.base_pointer = v.base_pointer
                         break
-
         elif type_info.is_array():
             self.ptr_info[var.name] = (var.name, var.version)
             var.base_pointer = (var.name, var.version)

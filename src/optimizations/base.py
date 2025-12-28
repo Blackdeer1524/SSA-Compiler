@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from src.ssa.cfg import CFG
+from src.ir.cfg import CFG
 
 
 class OptimizationPass(ABC):

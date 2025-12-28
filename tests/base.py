@@ -5,9 +5,9 @@ import unittest
 from src.parsing.lexer import Lexer
 from src.parsing.parser import Parser
 from src.parsing.semantic import SemanticAnalyzer
-from src.ssa.cfg import CFG, CFGBuilder
-from src.ssa.ir_visualizer import ir_to_graphviz
-from src.ssa.ssa import SSABuilder
+from src.ir.cfg import CFG, CFGBuilder
+from src.ir.ir_visualizer import ir_to_graphviz
+from src.ir.ssa import SSABuilder
 
 
 class TestBase(unittest.TestCase):
@@ -79,7 +79,7 @@ class TestBase(unittest.TestCase):
 
         message = textwrap.dedent(f"""
         digraph G {{
-            rankdir = LR;
+            rankdir = TD;
             subgraph cluster_source_code {{
                 node [shape=box]
                 label="Source";

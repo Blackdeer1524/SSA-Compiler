@@ -51,6 +51,39 @@ class TestSCCP(base.TestBase):
 
         self.assert_ir(src, expected_ir)
 
+    def test_zero_mult(self):
+        src = """
+        func main() -> int {
+            let a int = input();
+            let b int = 0;
+            let c int = a * b;  // 0
+            let d int = b * a;  // 0
+            return c + d;  // 0
+        }
+        
+        func input() -> int {
+            return 0;
+        }
+        """
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                a_v1 = input()
+                b_v1 = 0
+                c_v1 = 0
+                d_v1 = 0
+                %4_v1 = 0
+                return(0)
+            ; succ: [BB1]
+
+            ; pred: [BB0]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
     def test_simple_unreachable_block_drop(self):
         src = self.make_main("""
             let a int = 0;
@@ -152,7 +185,7 @@ class TestSCCP(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 s_v2 = ϕ(BB3: 0, BB5: s_v3)
                 i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
@@ -164,11 +197,11 @@ class TestSCCP(base.TestBase):
             ; succ: [BB5]
 
             ; pred: [BB4]
-            BB5: ; [loop update]
+            BB5: ; [loop latch]
                 i_v3 = i_v2 + 1
                 %11_v1 = i_v3 < 10
-                cmp(%11_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%11_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
@@ -258,19 +291,29 @@ class TestSCCP(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 N_v2 = ϕ(BB3: 0, BB5: N_v4)
                 i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
                 %3_v1 = N_v2 > 10
-                cmp(%3_v1, 1)
-                if CF == 1 then jmp BB8 else jmp BB9
-            ; succ: [BB9, BB8]
+                cmp(%3_v1, 0)
+                if CF == 0 then jmp BB8 else jmp BB9
+            ; succ: [BB8, BB9]
 
             ; pred: [BB4]
-            BB8: ; [then]
-                jmp BB6
-            ; succ: [BB6]
+            BB9: ; [merge]
+                %6_v1 = N_v2 + 1
+                N_v4 = %6_v1 * 2
+                jmp BB5
+            ; succ: [BB5]
+
+            ; pred: [BB9]
+            BB5: ; [loop latch]
+                i_v3 = i_v2 + 1
+                %12_v1 = i_v3 < 10
+                cmp(%12_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
+            ; succ: [BB4, BB6]
 
             ; pred: [BB8, BB5]
             BB6: ; [loop tail]
@@ -291,19 +334,9 @@ class TestSCCP(base.TestBase):
             ; succ: []
 
             ; pred: [BB4]
-            BB9: ; [merge]
-                %6_v1 = N_v2 + 1
-                N_v4 = %6_v1 * 2
-                jmp BB5
-            ; succ: [BB5]
-
-            ; pred: [BB9]
-            BB5: ; [loop update]
-                i_v3 = i_v2 + 1
-                %12_v1 = i_v3 < 10
-                cmp(%12_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
-            ; succ: [BB4, BB6]
+            BB8: ; [then]
+                jmp BB6
+            ; succ: [BB6] 
         """).strip()
 
         self.assert_ir(src, expected_ir)
@@ -340,7 +373,7 @@ class TestSCCP(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 N_v2 = ϕ(BB3: 5)
                 i_v2 = ϕ(BB3: 0)
 
@@ -373,7 +406,7 @@ class TestSCCP(base.TestBase):
         """).strip()
         self.assert_ir(src, expected_ir)
 
-    def test_complicacted_induction_dont_break_sccp(self):
+    def test_complicacted_induction_doesnt_break_sccp(self):
         src = self.make_main("""
             let n int = 0;
             for (let i int = 0; i < 10; i = 2 * i + 1) {
@@ -402,7 +435,7 @@ class TestSCCP(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 n_v2 = ϕ(BB3: 0, BB5: n_v3)
                 i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
@@ -411,12 +444,12 @@ class TestSCCP(base.TestBase):
             ; succ: [BB5]
 
             ; pred: [BB4]
-            BB5: ; [loop update]
+            BB5: ; [loop latch]
                 %5_v1 = 2 * i_v2
                 i_v3 = %5_v1 + 1
                 %9_v1 = i_v3 < 10
-                cmp(%9_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%9_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
@@ -472,7 +505,7 @@ class TestSCCP(base.TestBase):
             ; succ: [BB4]
 
             ; pred: [BB3, BB5]
-            BB4: ; [loop header]
+            BB4: ; [loop body]
                 i_v2 = ϕ(BB3: 0, BB5: i_v3)
 
                 %3_v1 = 0
@@ -485,11 +518,11 @@ class TestSCCP(base.TestBase):
             ; succ: [BB5]
 
             ; pred: [BB9]
-            BB5: ; [loop update]
+            BB5: ; [loop latch]
                 i_v3 = i_v2 + 1
                 %10_v1 = i_v3 < 10
-                cmp(%10_v1, 1)
-                if CF == 1 then jmp BB4 else jmp BB6
+                cmp(%10_v1, 0)
+                if CF == 0 then jmp BB4 else jmp BB6
             ; succ: [BB4, BB6]
 
             ; pred: [BB5]
@@ -540,7 +573,7 @@ class TestSCCP(base.TestBase):
             ; succ: [BB3]
 
             ; pred: [BB2]
-            BB3: ; [uncond loop header]
+            BB3: ; [uncond loop body]
                 a_v1 = 1
                 %2_v1 = 1
                 jmp BB7
@@ -562,6 +595,41 @@ class TestSCCP(base.TestBase):
             ; succ: [BB1]
 
             ; pred: [BB6]
+            BB1: ; [exit]
+            ; succ: []
+        """).strip()
+
+        self.assert_ir(src, expected_ir)
+
+    def test_unary_ops(self):
+        src = self.make_main("""
+            let a int = 1 + (-2) - +3 + +10;
+            if (!(a >= 11)) {
+                return 12;
+            }
+            return 0;
+        """)
+
+        expected_ir = textwrap.dedent("""
+            ; pred: []
+            BB0: ; [entry]
+                %3_v1 = -2
+                %1_v1 = -1
+                %5_v1 = 3
+                %0_v1 = -4
+                %7_v1 = 10
+                a_v1 = 6
+                %10_v1 = 0
+                %9_v1 = 1
+                jmp BB2
+            ; succ: [BB2]
+            
+            ; pred: [BB0]
+            BB2: ; [then]
+                return(12)
+            ; succ: [BB1]
+            
+            ; pred: [BB2]
             BB1: ; [exit]
             ; succ: []
         """).strip()

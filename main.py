@@ -3,9 +3,9 @@ from pprint import pprint
 from src.parsing.lexer import Lexer
 from src.parsing.parser import Parser
 from src.parsing.semantic import SemanticAnalyzer
-from src.ssa.cfg import CFGBuilder
-from src.ssa.dominance import compute_dominance_frontier_graph, compute_dominator_tree
-from src.ssa.ssa import SSABuilder
+from src.ir.cfg import CFGBuilder
+from src.ir.dominance import compute_dominance_frontier_graph, compute_dominator_tree
+from src.ir.ssa import SSABuilder
 from src.optimizations.sccp import SCCP
 from src.optimizations.licm import LICM
 from src.optimizations.dce import DCE
@@ -33,11 +33,6 @@ def main():
         "--disable-dce",
         action="store_true",
         help="Skip Dead Code Elimination optimization.",
-    )
-    arg_parser.add_argument(
-        "--disable-block-cleanup",
-        action="store_true",
-        help="Skip basic block cleanup pass.",
     )
     arg_parser.add_argument(
         "--dump-ir",
@@ -92,8 +87,6 @@ def main():
             SCCP().run(cfg)
         if not args.disable_dce:
             DCE().run(cfg)
-        # if not args.disable_block_cleanup:
-        #     BlockCleanup().run(cfg)
 
     if args.dump_ir:
         ir = cfg.to_IR()
@@ -113,7 +106,7 @@ def main():
         else:
             df = compute_dominance_frontier_graph(cfg, idom_tree)
 
-        graphviz = cfg.to_graphviz(rev_idom, df)
+        graphviz = cfg.to_graphviz(src, rev_idom, df)
         if args.dump_cfg_dot:
             with open(args.dump_cfg_dot, "w") as f:
                 f.write(graphviz)

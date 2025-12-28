@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from abc import ABC
+from dataclasses import dataclass, field
 from typing import Optional, List, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,14 +10,16 @@ from .lexer import Lexer, Token, TokenType
 
 # AST Node classes
 @dataclass
-class ASTNode:
-    """Base class for AST nodes."""
-
-    pass
+class ASTNode(ABC):
+    line: int
+    column: int
 
 
 @dataclass
 class Program(ASTNode):
+    line: int = field(init=False, default=1)
+    column: int = field(init=False, default=1)
+
     functions: List["Function"]
     symbol_table: Optional["SymbolTable"] = None
 
@@ -27,8 +30,6 @@ class Function(ASTNode):
     args: List["Argument"]
     return_type: str
     body: "Block"
-    line: int
-    column: int
 
 
 @dataclass
@@ -47,16 +48,12 @@ class Assignment(Statement):
     name: str
     type: str
     value: "Expression"
-    line: int
-    column: int
 
 
 @dataclass
 class Reassignment(Statement):
     lvalue: "LValue"
     value: "Expression"
-    line: int
-    column: int
 
 
 @dataclass
@@ -64,40 +61,30 @@ class Condition(Statement):
     condition: "Expression"
     then_block: "Block"
     else_block: Optional["Block"]
-    line: int
-    column: int
 
 
 @dataclass
 class ForLoop(Statement):
-    init: Assignment
+    init: list[Assignment]
     condition: "Expression"
-    update: Reassignment
+    update: list[Reassignment]
     body: "Block"
-    line: int
-    column: int
 
 
 @dataclass
 class UnconditionalLoop(Statement):
     body: "Block"
-    line: int
-    column: int
 
 
 @dataclass
 class FunctionCall(Statement):
     name: str
     args: List["Expression"]
-    line: int
-    column: int
 
 
 @dataclass
 class Return(Statement):
     value: Optional["Expression"]
-    line: int
-    column: int
 
 
 @dataclass
@@ -154,7 +141,7 @@ class CallExpression(Expression):
 
 @dataclass
 class ArrayAccess(Expression):
-    base: Expression
+    base: Identifier
     indices: List[Expression]
 
 
@@ -167,9 +154,6 @@ class ArrayInit(Expression):
 class LValue(ASTNode):
     """Left-hand side value for assignments - can be identifier or array access."""
 
-    line: int
-    column: int
-
 
 @dataclass
 class LValueIdentifier(LValue):
@@ -178,7 +162,7 @@ class LValueIdentifier(LValue):
 
 @dataclass
 class LValueArrayAccess(LValue):
-    base: str  # Base variable name
+    base: str
     indices: List[Expression]
 
 
@@ -226,13 +210,12 @@ class Parser:
     def match(self, *token_types: TokenType) -> bool:
         return self.current_token is not None and self.current_token.type in token_types
 
-    # Grammar rules implementation
-
     def parse(self) -> Program:
         """
         PROGRAMM ::= FUNCTION+ EOF
         """
         functions = []
+        functions.append(self.parse_function())
         while self.current_token and self.current_token.type != TokenType.EOF:
             functions.append(self.parse_function())
         return Program(functions)
@@ -257,7 +240,7 @@ class Parser:
 
         body = self.parse_block()
 
-        return Function(name, args, return_type, body, line, column)
+        return Function(line, column, name, args, return_type, body)
 
     def parse_arg_list(self) -> List[Argument]:
         """ARG_LIST ::= EPSILON | ARG ("," ARG)*"""
@@ -275,8 +258,7 @@ class Parser:
         name = name_token.value
 
         arg_type = self.parse_type()
-
-        return Argument(name, arg_type)
+        return Argument(name_token.line, name_token.column, name, arg_type)
 
     def parse_type(self) -> str:
         """TYPE ::= int | ("[" INTEGER "]")+ int | void"""
@@ -314,7 +296,7 @@ class Parser:
         return statements
 
     def parse_statement(self) -> Statement:
-        """STATEMENT ::= ASSIGNMENT | REASSIGNMENT | CONDITION | LOOP | FUNCTION_CALL ";" | RETURN ";" | BLOCK"""
+        """STATEMENT ::= ASSIGNMENT ";" | REASSIGNMENT ";" | CONDITION | LOOP | FUNCTION_CALL ";" | RETURN ";" | BLOCK"""
         if not self.current_token:
             raise ParseError("Unexpected end of file")
 
@@ -336,7 +318,9 @@ class Parser:
             return self.parse_continue()
 
         if self.check(TokenType.LET):
-            return self.parse_assignment()
+            assignment = self.parse_assignment()
+            self.expect(TokenType.SEMICOLON)
+            return assignment
 
         if self.check(TokenType.IDENTIFIER):
             if self.pos + 1 < len(self.tokens):
@@ -347,7 +331,9 @@ class Parser:
                     self.expect(TokenType.SEMICOLON)
                     return call
                 elif next_token.type == TokenType.ASSIGN:
-                    return self.parse_reassignment()
+                    reassignment = self.parse_reassignment()
+                    self.expect(TokenType.SEMICOLON)
+                    return reassignment
                 elif next_token.type == TokenType.LBRACKET:
                     peek_pos = self.pos + 1
                     bracket_count = 0
@@ -370,13 +356,15 @@ class Parser:
                         peek_pos += 1
 
                     if found_assign:
-                        return self.parse_reassignment()
+                        reassignment = self.parse_reassignment()
+                        self.expect(TokenType.SEMICOLON)
+                        return reassignment
 
         raise ParseError(f"Unexpected token: {token.type.name}", token)
 
     def parse_assignment(self) -> Assignment:
-        """ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" EXPR ";" """
-        self.expect(TokenType.LET)  # consume "let"
+        """ASSIGNMENT ::= "let" IDENTIFIER TYPE "=" EXPR"""
+        self.expect(TokenType.LET)
 
         name_token = self.expect(TokenType.IDENTIFIER)
         name = name_token.value
@@ -389,28 +377,23 @@ class Parser:
 
         # Check for array initialization: {}
         if self.check(TokenType.LBRACE):
-            self.advance()  # consume '{'
+            lbrace = self.expect(TokenType.LBRACE)
             self.expect(TokenType.RBRACE)  # consume '}'
-            value = ArrayInit()
+            value = ArrayInit(lbrace.line, lbrace.column)
         else:
             value = self.parse_expr()
 
-        self.expect(TokenType.SEMICOLON)
+        return Assignment(line, column, name, var_type, value)
 
-        return Assignment(name, var_type, value, line, column)
-
-    def parse_reassignment(self, require_semicolon: bool = True) -> Reassignment:
-        """REASSIGNMENT ::= EXPR_LVALUE "=" EXPR [";"]"""
+    def parse_reassignment(self) -> Reassignment:
+        """REASSIGNMENT ::= EXPR_LVALUE "=" EXPR"""
         lvalue = self.parse_lvalue()
         line = lvalue.line if hasattr(lvalue, "line") else 0
         column = lvalue.column if hasattr(lvalue, "column") else 0
 
         self.expect(TokenType.ASSIGN)
         value = self.parse_expr()
-        if require_semicolon:
-            self.expect(TokenType.SEMICOLON)
-
-        return Reassignment(lvalue, value, line, column)
+        return Reassignment(line, column, lvalue, value)
 
     def parse_lvalue(self) -> "LValue":
         """EXPR_LVALUE ::= IDENTIFIER ("[" EXPR "]")*"""
@@ -433,7 +416,7 @@ class Parser:
             return LValueIdentifier(line, column, base_name)
 
     def parse_condition(self) -> Condition:
-        """CONDITION ::= if "(" EXPR ")" BLOCK [else BLOCK]"""
+        """CONDITION ::= "if" "(" EXPR ")" BLOCK ["else" BLOCK]"""
         if_token = self.expect(TokenType.IF)
         line = if_token.line
         column = if_token.column
@@ -449,29 +432,36 @@ class Parser:
             self.advance()
             else_block = self.parse_block()
 
-        return Condition(condition, then_block, else_block, line, column)
+        return Condition(line, column, condition, then_block, else_block)
 
     def parse_loop(self) -> Union["ForLoop", "UnconditionalLoop"]:
-        """LOOP ::= for BLOCK | for "(" ASSIGNMENT ";" EXPR ";" REASSIGNMENT ")" BLOCK"""
+        """LOOP ::= "for" BLOCK | "for" "(" ASSIGNMENT ("," ASSIGNMENT)* ";" EXPR ";" REASSIGNMENT ("," REASSIGNMENT)* ")" BLOCK"""
         for_token = self.expect(TokenType.FOR)
         line = for_token.line
         column = for_token.column
 
         if self.check(TokenType.LBRACE):
             body = self.parse_block()
-            return UnconditionalLoop(body, line, column)
+            return UnconditionalLoop(line, column, body)
 
         self.expect(TokenType.LPAREN)
-        init = self.parse_assignment()  # this already consumes the semicolon
+        init = [self.parse_assignment()]
+        while self.check(TokenType.COMMA):
+            self.advance()
+            init.append(self.parse_assignment())
+
+        self.expect(TokenType.SEMICOLON)
         condition = self.parse_expr()
         self.expect(TokenType.SEMICOLON)
-        update = self.parse_reassignment(
-            require_semicolon=False
-        )  # No semicolon in for loop
+
+        update = [self.parse_reassignment()]
+        while self.check(TokenType.COMMA):
+            self.advance()
+            update.append(self.parse_reassignment())
         self.expect(TokenType.RPAREN)
         body = self.parse_block()
 
-        return ForLoop(init, condition, update, body, line, column)
+        return ForLoop(line, column, init, condition, update, body)
 
     def parse_function_call(self) -> FunctionCall:
         """FUNCTION_CALL ::= IDENTIFIER "(" EXPR_LIST ")" """
@@ -484,7 +474,7 @@ class Parser:
         args = self.parse_expr_list()
         self.expect(TokenType.RPAREN)
 
-        return FunctionCall(name, args, line, column)
+        return FunctionCall(line, column, name, args)
 
     def parse_expr_list(self) -> List[Expression]:
         """EXPR_LIST ::= EPSILON | EXPR ("," EXPR)*"""
@@ -497,7 +487,7 @@ class Parser:
         return args
 
     def parse_return(self) -> Return:
-        """RETURN ::= return [EXPR]"""
+        """RETURN ::= "return" [EXPR]"""
         return_token = self.expect(TokenType.RETURN)
         line = return_token.line
         column = return_token.column
@@ -507,10 +497,10 @@ class Parser:
             value = self.parse_expr()
 
         self.expect(TokenType.SEMICOLON)
-        return Return(value, line, column)
+        return Return(line, column, value)
 
     def parse_break(self) -> Break:
-        """BREAK ::= break ;"""
+        """BREAK ::= "break" ";" """
         break_token = self.expect(TokenType.BREAK)
         line = break_token.line
         column = break_token.column
@@ -519,7 +509,7 @@ class Parser:
         return Break(line, column)
 
     def parse_continue(self) -> Continue:
-        """CONTINUE ::= continue ;"""
+        """CONTINUE ::= "continue" ";" """
         continue_token = self.expect(TokenType.CONTINUE)
         line = continue_token.line
         column = continue_token.column
@@ -543,18 +533,18 @@ class Parser:
         """EXPR_OR ::= EXPR_AND ("||" EXPR_AND)*"""
         left = self.parse_expr_and()
         while self.check(TokenType.OR):
-            self.advance()
+            or_token = self.expect(TokenType.OR)
             right = self.parse_expr_and()
-            left = BinaryOp("||", left, right)
+            left = BinaryOp(or_token.line, or_token.column, "||", left, right)
         return left
 
     def parse_expr_and(self) -> Expression:
         """EXPR_AND ::= EXPR_COMP ("&&" EXPR_COMP)*"""
         left = self.parse_expr_comp()
         while self.check(TokenType.AND):
-            self.advance()
+            and_token = self.expect(TokenType.AND)
             right = self.parse_expr_comp()
-            left = BinaryOp("&&", left, right)
+            left = BinaryOp(and_token.line, and_token.column, "&&", left, right)
         return left
 
     def parse_expr_comp(self) -> Expression:
@@ -574,7 +564,7 @@ class Parser:
             self.advance()
             right = self.parse_expr_add()
             op_str = op_token.value
-            left = BinaryOp(op_str, left, right)
+            left = BinaryOp(op_token.line, op_token.column, op_str, left, right)
         return left
 
     def parse_expr_add(self) -> Expression:
@@ -587,7 +577,7 @@ class Parser:
             self.advance()
             op_str = op_token.value
             right = self.parse_expr_mul()
-            left = BinaryOp(op_str, left, right)
+            left = BinaryOp(op_token.line, op_token.column, op_str, left, right)
         return left
 
     def parse_expr_mul(self) -> Expression:
@@ -600,19 +590,27 @@ class Parser:
             self.advance()
             op_str = op_token.value
             right = self.parse_expr_unary()
-            left = BinaryOp(op_str, left, right)
+            left = BinaryOp(op_token.line, op_token.column, op_str, left, right)
         return left
 
     def parse_expr_unary(self) -> Expression:
-        """EXPR_UNARY ::= EXPR_ATOM | "-" EXPR_UNARY | "!" EXPR_UNARY"""
+        """EXPR_UNARY ::= EXPR_ATOM | "+" EXPR_UNARY | "-" EXPR_UNARY | "!" EXPR_UNARY"""
+        if self.check(TokenType.PLUS):
+            plus_token = self.expect(TokenType.PLUS)
+            operand = self.parse_expr_unary()
+            return UnaryOp(plus_token.line, plus_token.column, "+", operand)
+        elif self.check(TokenType.MINUS):
+            minus_token = self.expect(TokenType.MINUS)
+            operand = self.parse_expr_unary()
+            return UnaryOp(minus_token.line, minus_token.column, "-", operand)
         if self.check(TokenType.MINUS):
-            self.advance()
+            minus_token = self.expect(TokenType.MINUS)
             operand = self.parse_expr_unary()
-            return UnaryOp("-", operand)
+            return UnaryOp(minus_token.line, minus_token.column, "-", operand)
         elif self.check(TokenType.NOT):
-            self.advance()
+            not_token = self.expect(TokenType.NOT)
             operand = self.parse_expr_unary()
-            return UnaryOp("!", operand)
+            return UnaryOp(not_token.line, not_token.column, "!", operand)
         else:
             return self.parse_expr_atom()
 
@@ -620,7 +618,7 @@ class Parser:
         """EXPR_ATOM ::= IDENTIFIER ("[" EXPR "]")* | INTEGER | "(" EXPR ")" | FUNCTION_CALL"""
         if self.check(TokenType.INTEGER):
             token = self.expect(TokenType.INTEGER)
-            return IntegerLiteral(int(token.value))
+            return IntegerLiteral(token.line, token.column, int(token.value))
         elif self.check(TokenType.IDENTIFIER):
             # Check if it's a function call
             if (
@@ -632,10 +630,10 @@ class Parser:
                 self.expect(TokenType.LPAREN)
                 args = self.parse_expr_list()
                 self.expect(TokenType.RPAREN)
-                return CallExpression(name, args)
+                return CallExpression(name_token.line, name_token.column, name, args)
             else:
-                token = self.expect(TokenType.IDENTIFIER)
-                base = Identifier(token.value)
+                name_token = self.expect(TokenType.IDENTIFIER)
+                base = Identifier(name_token.line, name_token.column, name_token.value)
 
                 indices = []
                 while self.check(TokenType.LBRACKET):
@@ -645,7 +643,9 @@ class Parser:
                     self.expect(TokenType.RBRACKET)  # consume ']'
 
                 if indices:
-                    return ArrayAccess(base, indices)
+                    return ArrayAccess(
+                        name_token.line, name_token.column, base, indices
+                    )
                 else:
                     return base
         elif self.check(TokenType.LPAREN):

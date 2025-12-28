@@ -1,12 +1,11 @@
 from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import dataclass, field
 import re
+import textwrap
 from typing import Iterator, Optional, Sequence
 from src.parsing.parser import (
     Program,
     Function,
-    Argument,
     Statement,
     Assignment,
     Reassignment,
@@ -29,8 +28,8 @@ from src.parsing.parser import (
     LValueIdentifier,
     LValueArrayAccess,
 )
-from src.parsing.semantic import SymbolTable, Type
-from src.ssa.helpers import bb_colors, color_label, unwrap
+from src.parsing.semantic import SymbolTable
+from src.ir.helpers import bb_colors, color_label, unwrap
 
 
 @dataclass
@@ -40,10 +39,10 @@ class SSAValue(ABC): ...
 @dataclass
 class SSAVariable(SSAValue):
     name: str
-    base_pointer: Optional[tuple[str, int]] = field(default=None)
+    base_pointer: Optional[tuple[str, int]] = field(default=None, compare=False)
     version: int | None = field(default=None)
 
-    def __repr__(self):
+    def __str__(self):
         res = ""
         if self.base_pointer is not None:
             if (
@@ -58,6 +57,9 @@ class SSAVariable(SSAValue):
         if self.version is not None:
             res += f"_v{self.version}"
         return res
+
+    def as_tuple(self):
+        return (self.name, unwrap(self.version))
 
 
 @dataclass
@@ -76,8 +78,8 @@ class OpCall(Operation):
     name: str
     args: Sequence["SSAValue"]
 
-    def __repr__(self):
-        args_str = ", ".join(repr(arg) for arg in self.args)
+    def __str__(self):
+        args_str = ", ".join(str(arg) for arg in self.args)
         return f"{self.name}({args_str})"
 
 
@@ -133,7 +135,7 @@ class InstCmp(Instruction):
 
     def to_IR(self):
         ir = f"cmp({self.left}, {self.right})\n"
-        ir += f"if CF == 1 then jmp {self.then_block.label} else jmp {self.else_block.label}"
+        ir += f"if CF == 0 then jmp {self.else_block.label} else jmp {self.then_block.label}"
         return ir
 
 
@@ -253,7 +255,7 @@ class BasicBlock:
         res += f"; succ: {self.succ}"
         return res
 
-    def print_block(self):
+    def to_html(self):
         res = ""
         res += f'<font color="grey">; pred: {[color_label(bb.label) for bb in self.preds]}</font><br ALIGN="LEFT"/>'
         res += color_label(self.label) + ":"
@@ -288,29 +290,24 @@ class BasicBlock:
 
         res += f'<font color="grey">; succ: {[color_label(bb.label) for bb in self.succ]}</font>'
         res += '<br ALIGN="left"/>'
-
         return res
 
 
 @dataclass
-class CFG:
-    """Control Flow Graph for a function."""
+class LoopInfo:
+    preheader: BasicBlock
+    header: BasicBlock
+    tail: BasicBlock
 
+    blocks: set[BasicBlock] = field(init=False, default_factory=set)
+
+
+@dataclass
+class CFG:
     name: str
     entry: BasicBlock
     exit: BasicBlock
-    args: list["Argument"] = field(default_factory=list)  # Function arguments
-
-    def bfs(self) -> Iterator[tuple[int, BasicBlock]]:
-        visited_blocks = set()
-        q = deque([(0, self.entry)])
-        while len(q) > 0:
-            (depth, bb) = q.popleft()
-            if bb in visited_blocks:
-                continue
-            visited_blocks.add(bb)
-            yield (depth, bb)
-            q.extend(((depth + 1, s) for s in bb.succ if s not in visited_blocks))
+    loops_info: list[LoopInfo] = field(init=False, default_factory=list)
 
     def __iter__(self) -> Iterator[BasicBlock]:
         visited_blocks = set()
@@ -325,22 +322,43 @@ class CFG:
 
     def to_graphviz(
         self,
+        src: str,
         reversed_idom_tree: dict[BasicBlock, list[BasicBlock]],
         dominance_frontier: dict["BasicBlock", set["BasicBlock"]],
     ):
         res = f"digraph {self.name} {{\n"
-        res += "rankdir = LR;\n"
+        res += "rankdir = TD;\n"
+
+        block_src_code = (
+            textwrap.dedent(src)
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\n", '<br ALIGN="left"/>')
+            + '<br ALIGN="left"/>'
+        )
+        source_block = f'"src" [label=<{block_src_code}>]'
+        res += f"""
+            subgraph cluster_source_code {{
+                node [shape=box]
+                label="Исходный код";
+            {source_block}
+            }}
+            
+            subgraph cluster_original {{
+                label="Граф потока управления";
+        """
+
         res += "node [shape=box]\n"
 
         for bb in self:
-            bb_repr = bb.print_block().replace("\\l", '<br ALIGN="LEFT"/>')
+            bb_repr = bb.to_html().replace("\\l", '<br ALIGN="LEFT"/>')
             res += f'"{bb.label}" [label=<{bb_repr}>]\n'
 
         for bb in self:
             for succ in bb.succ:
                 res += (
                     f'"{bb.label}" -> "{succ.label}" '
-                    + '[headport="w", tailport="e", penwidth=3, '
+                    + '[headport="n", tailport="s", penwidth=3, '
                     + f'color="{bb_colors[succ.label]};0.5:{bb_colors[bb.label]}"]\n'
                 )
 
@@ -352,6 +370,7 @@ class CFG:
             for df in dfs:
                 res += f'"{bb.label}" -> "{df.label}" [color=red]\n'
 
+        res += "}"
         res += "}"
         return res
 
@@ -370,8 +389,6 @@ class CFGBuilder:
         self.cur_block: Optional[BasicBlock] = None
         self.break_targets: list[BasicBlock] = []  # Stack of break targets
         self.continue_targets: list[BasicBlock] = []  # Stack of continue targets
-        self.program: Optional[Program] = None
-        self.current_function: Optional[Function] = None
 
     def _get_tmp_var(self) -> str:
         name = f"%{self.tmp_var_counter}"
@@ -390,7 +407,6 @@ class CFGBuilder:
         self.cur_block = bb
 
     def build(self, program: Program) -> list[CFG]:
-        self.program = program
         cfgs = []
         for func in program.functions:
             cfg = self._build_function(func)
@@ -398,17 +414,14 @@ class CFGBuilder:
         return cfgs
 
     def _build_function(self, func: Function) -> CFG:
-        self.block_counter = 0
         self.break_targets = []
         self.continue_targets = []
-        self.current_function = func
 
         assert func.body.symbol_table is not None
         entry = self._new_block(func.body.symbol_table, "entry")
         exit_block = self._new_block(func.body.symbol_table, "exit")
 
-        cfg = CFG(func.name, entry=entry, exit=exit_block, args=func.args)
-        self.current_cfg = cfg
+        self.cfg = CFG(func.name, entry=entry, exit=exit_block)
         self.cur_block = entry
 
         for i, arg in enumerate(func.args):
@@ -418,7 +431,7 @@ class CFGBuilder:
         if not self.cur_block.succ:
             self.cur_block.add_child(exit_block)
 
-        return cfg
+        return self.cfg
 
     def _build_block(self, syntax_block: Block):
         assert self.cur_block is not None
@@ -468,7 +481,7 @@ class CFGBuilder:
         assert self.cur_block is not None, "Current block must be set"
 
         match expr:
-            case BinaryOp(op, left, right):
+            case BinaryOp(_, _, op, left, right):
                 left_val = self._build_subexpression(left, self._get_tmp_var())
                 right_val = self._build_subexpression(right, self._get_tmp_var())
 
@@ -477,16 +490,16 @@ class CFGBuilder:
                     InstAssign(lhs, OpBinary(op, left_val, right_val))
                 )
                 return lhs
-            case UnaryOp(op, operand):
+            case UnaryOp(_, _, op, operand):
                 subexpr_val = self._build_subexpression(operand, self._get_tmp_var())
                 lhs = SSAVariable(name)
                 self.cur_block.append(InstAssign(lhs, OpUnary(op, subexpr_val)))
                 return lhs
-            case Identifier(ident_name):
+            case Identifier(_, _, ident_name):
                 return SSAVariable(ident_name)
-            case IntegerLiteral(value):
+            case IntegerLiteral(_, _, value):
                 return SSAConstant(value)
-            case CallExpression(func_name, args):
+            case CallExpression(_, _, func_name, args):
                 args = [
                     self._build_subexpression(arg, self._get_tmp_var()) for arg in args
                 ]
@@ -563,7 +576,10 @@ class CFGBuilder:
             "Expected LValueIdentifier for simple reassignment"
         )
         subexpr_ssa_val = self._build_subexpression(stmt.value, stmt.lvalue.name)
-        if not isinstance(subexpr_ssa_val, SSAVariable):
+        if (
+            not isinstance(subexpr_ssa_val, SSAVariable)
+            or subexpr_ssa_val.name != stmt.lvalue.name
+        ):
             lhs = SSAVariable(stmt.lvalue.name)
             self.cur_block.append(InstAssign(lhs, subexpr_ssa_val))
 
@@ -632,16 +648,17 @@ class CFGBuilder:
         then_block = self._new_block(unwrap(stmt.then_block.symbol_table), "then")
         merge_block = self._new_block(self.cur_block.symbol_table, "merge")
 
+        self.cur_block.add_child(then_block)
         cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
         if stmt.else_block is None:
             self.cur_block.append(
-                InstCmp(cond_var, SSAConstant(1), then_block, merge_block)
+                InstCmp(cond_var, SSAConstant(0), merge_block, then_block)
             )
             self.cur_block.add_child(merge_block)
         else:
             else_block = self._new_block(unwrap(stmt.else_block.symbol_table), "else")
             self.cur_block.append(
-                InstCmp(cond_var, SSAConstant(1), then_block, else_block)
+                InstCmp(cond_var, SSAConstant(0), else_block, then_block)
             )
             self.cur_block.add_child(else_block)
 
@@ -649,19 +666,22 @@ class CFGBuilder:
             self._switch_to_block(else_block)
             self._build_block(stmt.else_block)
 
+            if self.cur_block == else_block:
+                self.cur_block.add_child(merge_block)
+
             if len(self.cur_block.instructions) == 0 or not isinstance(
-                self.cur_block.instructions[-1], (InstUncondJump, InstCmp)
+                self.cur_block.instructions[-1],
+                (InstUncondJump, InstCmp, InstReturn),
             ):
                 self.cur_block.add_child(merge_block)
                 self.cur_block.append(InstUncondJump(merge_block))
                 self._switch_to_block(old_block)
 
-        self.cur_block.add_child(then_block)
         self._switch_to_block(then_block)
         self._build_block(stmt.then_block)
 
         if len(self.cur_block.instructions) == 0 or not isinstance(
-            self.cur_block.instructions[-1], (InstUncondJump, InstCmp)
+            self.cur_block.instructions[-1], (InstUncondJump, InstCmp, InstReturn)
         ):
             self.cur_block.add_child(merge_block)
             self.cur_block.append(InstUncondJump(merge_block))
@@ -674,8 +694,8 @@ class CFGBuilder:
         body_st = unwrap(stmt.body.symbol_table)
         initial_cond_block = self._new_block(body_st, "condition check")
         preheader_block = self._new_block(body_st, "loop preheader")
-        header_block = self._new_block(body_st, "loop header")
-        update_block = self._new_block(body_st, "loop update")
+        body_block = self._new_block(body_st, "loop body")
+        latch_block = self._new_block(body_st, "loop latch")
 
         # required for an easier loop detection in LICM : all tail's predecessors are guaranteed to be loop blocks
         tail_block = self._new_block(body_st, "loop tail")
@@ -685,36 +705,38 @@ class CFGBuilder:
         self.cur_block.add_child(initial_cond_block)
         self._switch_to_block(initial_cond_block)
 
-        self._build_assignment(stmt.init)
+        for assignment in stmt.init:
+            self._build_assignment(assignment)
         cond_var = self._build_subexpression(stmt.condition, self._get_tmp_var())
         self.cur_block.append(
-            InstCmp(cond_var, SSAConstant(1), preheader_block, exit_block)
+            InstCmp(cond_var, SSAConstant(0), exit_block, preheader_block)
         )
         self.cur_block.add_child(preheader_block)
         self.cur_block.add_child(exit_block)
 
         self._switch_to_block(preheader_block)
-        self.cur_block.append(InstUncondJump(header_block))
-        self.cur_block.add_child(header_block)
+        self.cur_block.append(InstUncondJump(body_block))
+        self.cur_block.add_child(body_block)
 
         self.break_targets.append(tail_block)
-        self.continue_targets.append(update_block)
-        self._switch_to_block(header_block)
+        self.continue_targets.append(latch_block)
+        self._switch_to_block(body_block)
         self._build_block(stmt.body)
 
         if len(self.cur_block.instructions) == 0 or not isinstance(
             self.cur_block.instructions[-1], (InstUncondJump, InstCmp, InstReturn)
         ):
-            self.cur_block.add_child(update_block)
-            self.cur_block.append(InstUncondJump(update_block))
+            self.cur_block.add_child(latch_block)
+            self.cur_block.append(InstUncondJump(latch_block))
 
-        self._switch_to_block(update_block)
-        self._build_reassignment(stmt.update)
+        self._switch_to_block(latch_block)
+        for reassignment in stmt.update:
+            self._build_reassignment(reassignment)
         cond_var2 = self._build_subexpression(stmt.condition, self._get_tmp_var())
         self.cur_block.append(
-            InstCmp(cond_var2, SSAConstant(1), header_block, tail_block)
+            InstCmp(cond_var2, SSAConstant(0), tail_block, body_block)
         )
-        self.cur_block.add_child(header_block)
+        self.cur_block.add_child(body_block)
         self.cur_block.add_child(tail_block)
 
         self.break_targets.pop()
@@ -725,14 +747,15 @@ class CFGBuilder:
         self.cur_block.add_child(exit_block)
 
         self._switch_to_block(exit_block)
+        self.cfg.loops_info.append(LoopInfo(preheader_block, body_block, tail_block))
 
     def _build_unconditional_loop(self, stmt: UnconditionalLoop):
         assert self.cur_block is not None, "Current block must be set"
 
         body_st = unwrap(stmt.body.symbol_table)
         preheader_block = self._new_block(body_st, "uncond loop preheader")
-        header_block = self._new_block(body_st, "uncond loop header")
-        update_block = self._new_block(body_st, "uncond loop update")
+        body_block = self._new_block(body_st, "uncond loop body")
+        latch_block = self._new_block(body_st, "uncond loop latch")
         tail_block = self._new_block(body_st, "uncond loop tail")
         exit_block = self._new_block(self.cur_block.symbol_table, "uncond loop exit")
 
@@ -740,12 +763,12 @@ class CFGBuilder:
         self.cur_block.add_child(preheader_block)
         self._switch_to_block(preheader_block)
 
-        self.cur_block.append(InstUncondJump(header_block))
-        self.cur_block.add_child(header_block)
-        self._switch_to_block(header_block)
+        self.cur_block.append(InstUncondJump(body_block))
+        self.cur_block.add_child(body_block)
+        self._switch_to_block(body_block)
 
         self.break_targets.append(tail_block)
-        self.continue_targets.append(update_block)
+        self.continue_targets.append(latch_block)
         self._build_block(stmt.body)
         self.break_targets.pop()
         self.continue_targets.pop()
@@ -753,22 +776,23 @@ class CFGBuilder:
         if len(self.cur_block.instructions) == 0 or not isinstance(
             self.cur_block.instructions[-1], (InstUncondJump, InstCmp, InstReturn)
         ):
-            self.cur_block.add_child(update_block)
-            self.cur_block.append(InstUncondJump(update_block))
+            self.cur_block.add_child(latch_block)
+            self.cur_block.append(InstUncondJump(latch_block))
 
-        self._switch_to_block(update_block)
-        self.cur_block.append(InstUncondJump(header_block))
-        self.cur_block.add_child(header_block)
+        self._switch_to_block(latch_block)
+        self.cur_block.append(InstUncondJump(body_block))
+        self.cur_block.add_child(body_block)
 
         self._switch_to_block(tail_block)
         self.cur_block.append(InstUncondJump(exit_block))
         self.cur_block.add_child(exit_block)
 
         self._switch_to_block(exit_block)
+        self.cfg.loops_info.append(LoopInfo(preheader_block, body_block, tail_block))
 
     def _build_return(self, stmt: Return):
         assert self.cur_block is not None, "Current block must be set"
-        assert self.current_cfg is not None, "Current CFG must be set"
+        assert self.cfg is not None, "Current CFG must be set"
 
         if stmt.value is not None:
             ret_ssa = self._build_subexpression(stmt.value, self._get_tmp_var())
@@ -776,7 +800,7 @@ class CFGBuilder:
         else:
             self.cur_block.append(InstReturn(None))
 
-        self.cur_block.add_child(self.current_cfg.exit)
+        self.cur_block.add_child(self.cfg.exit)
         self._switch_to_block(
             self._new_block(self.cur_block.symbol_table, "after return")
         )

@@ -1,16 +1,15 @@
-from __future__ import annotations
-
-from collections import defaultdict
-from dataclasses import dataclass
+from collections import defaultdict, deque
 from typing import Optional, Iterable, override
 
 from src.optimizations.base import OptimizationPass
-from src.ssa.cfg import (
+from src.ir.cfg import (
     CFG,
     BasicBlock,
     InstArrayInit,
     InstAssign,
+    InstGetArgument,
     Instruction,
+    LoopInfo,
     OpLoad,
     Operation,
     OpBinary,
@@ -20,15 +19,8 @@ from src.ssa.cfg import (
     SSAVariable,
     SSAConstant,
 )
-from src.ssa.dominance import DominatorTree, compute_dominator_tree
-
-
-@dataclass
-class LoopInfo:
-    header: BasicBlock
-    preheader: BasicBlock
-    blocks: set[BasicBlock]
-    exit_block: BasicBlock
+from src.ir.dominance import DominatorTree, compute_dominator_tree
+from src.ir.helpers import unwrap
 
 
 class LICM(OptimizationPass):
@@ -43,8 +35,8 @@ class LICM(OptimizationPass):
         self.cfg = cfg
         self.dom_tree = compute_dominator_tree(cfg)
         self._index_definitions(cfg)
-        loops = self._find_loops(cfg)
-        for loop in sorted(loops, key=lambda x: len(x.blocks)):
+        self._collect_loop_blocks(cfg)
+        for loop in cfg.loops_info:
             self._hoist_loop(loop)
 
     def _index_definitions(self, cfg: CFG):
@@ -52,85 +44,62 @@ class LICM(OptimizationPass):
         self.uses.clear()
         for bb in cfg:
             for phi in bb.phi_nodes.values():
-                if phi.lhs.version is not None:
-                    def_key = (phi.lhs.name, phi.lhs.version)
-                    self.def_to_block[def_key] = bb
-                    for _, val in phi.rhs.items():
-                        if isinstance(val, SSAVariable) and val.version is not None:
-                            use_key = (val.name, val.version)
-                            self.uses[use_key].add(def_key)
+                def_key = (phi.lhs.name, unwrap(phi.lhs.version))
+                self.def_to_block[def_key] = bb
+                for _, val in phi.rhs.items():
+                    if isinstance(val, SSAVariable):
+                        use_key = (val.name, unwrap(val.version))
+                        self.uses[use_key].add(def_key)
 
             for inst in bb.instructions:
-                if isinstance(inst, InstAssign) and inst.lhs.version is not None:
-                    def_key = (inst.lhs.name, inst.lhs.version)
-                    self.def_to_block[def_key] = bb
-                    for operand in self._collect_operands(inst.rhs):
-                        if (
-                            isinstance(operand, SSAVariable)
-                            and operand.version is not None
-                        ):
-                            use_key = (operand.name, operand.version)
-                            self.uses[use_key].add(def_key)
-                elif isinstance(inst, InstArrayInit) and inst.lhs.version is not None:
-                    def_key = (inst.lhs.name, inst.lhs.version)
-                    self.def_to_block[def_key] = bb
+                match inst:
+                    case InstGetArgument():
+                        def_key = (inst.lhs.name, unwrap(inst.lhs.version))
+                        self.def_to_block[def_key] = bb
+                    case InstAssign():
+                        def_key = (inst.lhs.name, unwrap(inst.lhs.version))
+                        self.def_to_block[def_key] = bb
+                        for operand in self._collect_operands(inst.rhs):
+                            if isinstance(operand, SSAVariable):
+                                use_key = (operand.name, unwrap(operand.version))
+                                self.uses[use_key].add(def_key)
+                    case InstArrayInit():
+                        def_key = (inst.lhs.name, unwrap(inst.lhs.version))
+                        self.def_to_block[def_key] = bb
 
-    def _find_loops(self, cfg: CFG) -> list[LoopInfo]:
-        assert self.dom_tree is not None
-        loops: list[LoopInfo] = []
-        for bb in cfg:
-            for succ in bb.succ:
-                if not self._dominates(succ, bb):
+    def _bfs_order_blocks(
+        self, header: BasicBlock, loop_blocks: set[BasicBlock]
+    ) -> Iterable[BasicBlock]:
+        seen_blocks = set([])
+        q = deque([header])
+        while len(q) > 0:
+            bb = q.popleft()
+            if bb in seen_blocks:
+                continue
+
+            seen_blocks.add(bb)
+            yield bb
+
+            q.extend((s for s in bb.succ if s in loop_blocks and s not in seen_blocks))
+
+    def _collect_loop_blocks(self, cfg: CFG):
+        for loop_info in cfg.loops_info:
+            q = [loop_info.tail]
+            loop_blocks: set[BasicBlock] = set([loop_info.preheader])
+            while len(q) > 0:
+                bb = q.pop()
+                if bb in loop_blocks:
                     continue
+                loop_blocks.add(bb)
+                q.extend((p for p in bb.preds if p not in loop_blocks))
 
-                # one back edge and one forward edge for a conditional for loop
-                # one back edge for the unconditional one
-                assert len(bb.succ) <= 2
-
-                loop_blocks = self._collect_loop_blocks(header=succ, tail=bb)
-                preheaders = [pred for pred in succ.preds if pred not in loop_blocks]
-                assert len(preheaders) == 1
-
-                if len(bb.succ) == 2:
-                    loops.append(
-                        LoopInfo(
-                            header=succ,
-                            preheader=preheaders[0],
-                            blocks=loop_blocks,
-                            exit_block=bb.succ[0] if bb.succ[0] != succ else bb.succ[1],
-                        )
-                    )
-                elif len(bb.succ) == 1:
-                    loops.append(
-                        LoopInfo(
-                            header=succ,
-                            preheader=preheaders[0],
-                            blocks=loop_blocks,
-                            exit_block=bb.succ[0],
-                        )
-                    )
-
-        return loops
+            loop_blocks.remove(loop_info.preheader)
+            loop_info.blocks = loop_blocks
 
     def _dominates(self, a: BasicBlock, b: BasicBlock) -> bool:
         assert self.dom_tree is not None
-        doms = self.dom_tree.dominators.get(b)
-        if doms is None:
-            return False
+        doms = self.dom_tree.dominators[b]
         return a in doms
-
-    def _collect_loop_blocks(
-        self, header: BasicBlock, tail: BasicBlock
-    ) -> set[BasicBlock]:
-        seen_loop_blocks = {header}
-        stack = [tail]
-        while stack:
-            node = stack.pop()
-            if node in seen_loop_blocks:
-                continue
-            seen_loop_blocks.add(node)
-            stack.extend(node.preds)
-        return seen_loop_blocks
 
     def _hoist_loop(self, loop: LoopInfo):
         assert self.dom_tree is not None
@@ -142,24 +111,23 @@ class LICM(OptimizationPass):
         changed = True
         while changed:
             changed = False
-            for bb in self.dom_tree.traverse(loop.header):
-                if bb not in loop.blocks:
-                    continue
-
+            for bb in self._bfs_order_blocks(loop.header, loop.blocks):
                 new_insts: list[Instruction] = []
                 for inst in bb.instructions:
-                    if self._is_hoistable(
-                        inst, bb, loop.blocks, loop.exit_block, invariant_defs
+                    if not self._is_hoistable(
+                        inst, bb, loop.blocks, loop.tail, invariant_defs
                     ):
-                        assert isinstance(inst, InstAssign)
-                        hoisted.append(inst)
-
-                        assert inst.lhs.version is not None
-                        invariant_defs.add((inst.lhs.name, inst.lhs.version))
-                        self.def_to_block[(inst.lhs.name, inst.lhs.version)] = preheader
-                        changed = True
-                    else:
                         new_insts.append(inst)
+                        continue
+
+                    assert isinstance(inst, InstAssign)
+                    hoisted.append(inst)
+
+                    invariant_defs.add((inst.lhs.name, unwrap(inst.lhs.version)))
+                    self.def_to_block[(inst.lhs.name, unwrap(inst.lhs.version))] = (
+                        preheader
+                    )
+                    changed = True
                 bb.instructions = new_insts
 
         if not hoisted:
@@ -181,7 +149,7 @@ class LICM(OptimizationPass):
         inst: Instruction,
         inst_block: BasicBlock,
         loop_blocks: set[BasicBlock],
-        exit_block: BasicBlock,
+        tail_block: BasicBlock,
         invariant_defs: set[tuple[str, int]],
     ) -> bool:
         if not isinstance(inst, InstAssign):
@@ -191,11 +159,10 @@ class LICM(OptimizationPass):
         if isinstance(rhs, OpCall) or isinstance(rhs, OpLoad):
             return False
 
-        if not self._dominates(inst_block, exit_block):
+        if not self._dominates(inst_block, tail_block):
             return False
 
-        assert inst.lhs.version is not None
-        def_key = (inst.lhs.name, inst.lhs.version)
+        def_key = (inst.lhs.name, unwrap(inst.lhs.version))
         uses = self.uses.get(def_key, set())
         for use_def_key in uses:
             use_block = self.def_to_block.get(use_def_key)
@@ -205,13 +172,9 @@ class LICM(OptimizationPass):
                 if not self._dominates(inst_block, use_block):
                     return False
 
-        operands = list(self._collect_operands(rhs))
-        if not operands:
-            return True
-
         return all(
             self._operand_is_invariant(op, loop_blocks, invariant_defs)
-            for op in operands
+            for op in self._collect_operands(rhs)
         )
 
     def _collect_operands(self, rhs: Operation | SSAValue) -> Iterable[SSAValue]:
@@ -238,10 +201,9 @@ class LICM(OptimizationPass):
         if isinstance(operand, SSAConstant):
             return True
         if isinstance(operand, SSAVariable):
-            assert operand.version is not None
-            key = (operand.name, operand.version)
+            key = (operand.name, unwrap(operand.version))
             if key in invariant_defs:
                 return True
-            def_block = self.def_to_block.get(key)
-            return def_block is not None and def_block not in loop_blocks
+            def_block = self.def_to_block[key]
+            return def_block not in loop_blocks
         return False
